@@ -1,0 +1,18 @@
+[Unit]
+Description=Amazon Seller Tools
+After=network.target
+
+[Service]
+Type=simple
+User=${APP_USER}
+WorkingDirectory=${INSTALL_DIR}
+Environment=NODE_ENV=production
+Environment=PORT=${APP_PORT}
+ExecStart=${NODE_BIN} ${INSTALL_DIR}/server.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

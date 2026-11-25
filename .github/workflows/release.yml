@@ -1,0 +1,51 @@
+name: Release
+# 打 tag（vX.Y.Z）或手动触发时：校验语法、打一个可直接运行的源码包，
+# 作为 GitHub Release 资产上传。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "发布标签，例如 v1.0.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 打包并发布
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 发布前校验
+        run: |
+          node --check server.js
+          node -e "const fs=require('fs');const h=fs.readFileSync('index.html','utf8');const m=/<script>([\s\S]*?)<\/script>/.exec(h);if(!m)throw new Error('index.html 里没有内联脚本');new Function(m[1])"
+          test -s index.html
+          test -s Dockerfile
+          test -s deploy/install.conf.example
+
+      - name: 打源码包
+        run: |
+          mkdir -p release/amazon-seller-tools
+          cp server.js index.html package.json build.sh run.sh Dockerfile docker-compose.yml release/amazon-seller-tools/
+          cp -r deploy release/amazon-seller-tools/deploy
+          rm -rf release/amazon-seller-tools/deploy/dist release/amazon-seller-tools/deploy/install.conf
+          cd release
+          zip -r amazon-seller-tools.zip amazon-seller-tools
+          unzip -l amazon-seller-tools.zip
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          body_path: .github/release-body.md
+          files: release/amazon-seller-tools.zip
+          fail_on_unmatched_files: true

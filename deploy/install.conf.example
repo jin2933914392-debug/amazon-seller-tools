@@ -1,0 +1,19 @@
+# 亚马逊卖家助手 · 自托管部署配置
+#
+# 复制为 deploy/install.conf 并填写，然后运行：
+#   bash deploy/render-deploy.sh
+# 会把 deploy/*.template 渲染到 deploy/dist/，并打印安装命令。
+#
+# 留空则使用注释中的默认值。
+# 证书域名（Certbot 用），必填。
+SERVER_NAME=amz.example.com
+# 项目在服务器上的目录。
+INSTALL_DIR=/opt/amazon-seller-tools
+# 运行 Node 进程的系统用户（不要用 root；Debian/Ubuntu 可用 www-data，RHEL 可用 nginx）。
+APP_USER=www-data
+# Node 可执行文件。
+NODE_BIN=/usr/bin/node
+# Node 监听端口（与 nginx 反代一致）。
+APP_PORT=8000
+# 健康检查日志，目录需对 root 可写（cron 以 root 运行）。
+HEALTH_LOG=/var/log/amazon-seller-tools/health.log

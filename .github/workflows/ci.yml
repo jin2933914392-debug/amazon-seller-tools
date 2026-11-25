@@ -1,0 +1,115 @@
+name: CI
+# 这个仓库没有构建步骤，最容易悄悄坏掉的是：
+#   1. server.js 语法；
+#   2. index.html 里的内联脚本（整站逻辑都在这一段）；
+#   3. 服务启动后 /api/health 与首页是否还能打开；
+#   4. 自托管部署模板是否还能渲染。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  syntax:
+    name: 语法门禁
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: server.js 语法
+        run: node --check server.js
+      - name: index.html 内联脚本语法
+        run: |
+          node -e "const fs=require('fs');const h=fs.readFileSync('index.html','utf8');const m=/<script>([\s\S]*?)<\/script>/.exec(h);if(!m)throw new Error('index.html 里没有内联脚本');new Function(m[1]);console.log('inline script OK')"
+      - name: 关键入口存在
+        run: |
+          test -s index.html
+          grep -q 'id="page-alexa"' index.html
+          grep -q 'id="page-keyword"' index.html
+          grep -q 'function buildWordSea' index.html
+
+  smoke:
+    name: 启动冒烟 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      PORT: "8123"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: 启动并检查 /api/health 与首页
+        shell: bash
+        run: |
+          node server.js > server.log 2>&1 &
+          PID=$!
+          trap 'kill $PID 2>/dev/null || true' EXIT
+          ok=0
+          for i in $(seq 1 30); do
+            if node -e "fetch('http://127.0.0.1:8123/api/health').then(r=>{if(!r.ok)process.exit(1);return r.json()}).then(j=>{if(!j.ok)process.exit(1)})" 2>/dev/null; then
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "健康检查失败，服务日志："
+            cat server.log
+            exit 1
+          fi
+          echo "health OK"
+          node -e "fetch('http://127.0.0.1:8123/').then(r=>r.text()).then(t=>{if(!t.includes('按任务开始'))process.exit(1);console.log('homepage OK')})"
+
+  deploy-config:
+    name: 自托管模板渲染
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 安装 envsubst
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gettext-base
+      - name: 渲染并检查残留占位符
+        run: |
+          cp deploy/install.conf.example deploy/install.conf
+          bash deploy/render-deploy.sh
+          test -s deploy/dist/nginx/amazon-seller-tools.conf
+          test -s deploy/dist/systemd/amazon-seller-tools.service
+          test -s deploy/dist/cron.d/amazon-seller-tools-health
+          if grep -rn '\${' deploy/dist; then
+            echo "存在未替换的占位符"
+            exit 1
+          fi
+          grep -q 'proxy_pass http://127.0.0.1:8000' deploy/dist/nginx/amazon-seller-tools.conf
+
+  docker:
+    name: Docker 构建与运行
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 构建镜像
+        run: docker build -t amazon-seller-tools:ci .
+      - name: 运行并检查 /api/health
+        run: |
+          docker run -d --name ast-ci -p 8124:8000 amazon-seller-tools:ci
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8124/api/health >/dev/null; then
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+          docker logs ast-ci || true
+          docker rm -f ast-ci || true
+          if [ "$ok" -ne 1 ]; then
+            echo "容器健康检查失败"
+            exit 1
+          fi
+          echo "container health OK"

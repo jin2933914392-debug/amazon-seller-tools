@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 先看线上版本
+    url: https://37lmgu7z9v2nb3yma16.traesite.cn
+    about: 确认问题是否在最新线上版本仍然存在

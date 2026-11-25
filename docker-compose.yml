@@ -1,0 +1,14 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: amazon-seller-tools:latest
+    container_name: amazon-seller-tools
+    restart: unless-stopped
+    ports:
+      - "8080:8000"
+    environment:
+      - PORT=8000
+    security_opt:
+      - no-new-privileges:true

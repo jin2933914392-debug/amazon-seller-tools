@@ -1,0 +1,3685 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>亚马逊卖家助手 · AI 运营工具集</title>
+<meta name="description" content="面向亚马逊卖家的免费运营工具集：广告搜索词分析、关键词五池分类、竞品流量词口径校准、FBA 利润计算、选品评分、BSR 预估。把判断标准沉淀下来，而不只是搬运数据。">
+<style>
+  :root{
+    --amazon:#FF9900;
+    --amazon-dark:#E47911;
+    --ink:#0F1111;
+    --muted:#565959;
+    --bg:#F5F7FA;
+    --card:#FFFFFF;
+    --line:#E7E7E7;
+    --line-soft:#EDEFF2;
+    --green:#007E2F;
+    --red:#C40000;
+    --blue:#146EB4;
+    --purple:#7D4BD0;
+    --radius:12px;
+    --shadow:0 2px 8px rgba(15,17,17,.05);
+    --shadow-lg:0 10px 30px rgba(15,17,17,.08);
+    --sidebar-w:236px;
+    --sidebar-bg:#131A22;
+    --topbar-h:58px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);line-height:1.6;
+    -webkit-font-smoothing:antialiased;font-size:14px;
+  }
+  a{color:var(--blue);text-decoration:none}
+
+  /* ============ 布局骨架 ============ */
+  .app{display:flex;min-height:100vh}
+
+  /* ============ 左侧导航 ============ */
+  .sidebar{
+    width:var(--sidebar-w);flex:0 0 var(--sidebar-w);background:var(--sidebar-bg);
+    color:#cfd6dd;display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;z-index:50;
+    transition:transform .25s ease;
+  }
+  .brand{display:flex;align-items:center;gap:10px;padding:18px 18px 16px;border-bottom:1px solid rgba(255,255,255,.07)}
+  .brand-logo{width:34px;height:34px;border-radius:8px;background:var(--amazon);display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--ink);font-weight:800;flex:0 0 34px}
+  .brand-name{font-size:15px;font-weight:700;color:#fff;line-height:1.2}
+  .brand-badge{font-size:10px;color:var(--amazon);font-weight:700;letter-spacing:.5px}
+
+  .menu{flex:1;overflow-y:auto;padding:12px 10px 16px}
+  .menu::-webkit-scrollbar{width:5px}
+  .menu::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px}
+  .menu-group{margin-bottom:6px}
+  .menu-group-title{font-size:11px;color:#6b7684;text-transform:uppercase;letter-spacing:.6px;padding:14px 12px 6px;font-weight:700}
+  .menu-item{
+    display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;color:#c4ccd4;
+    cursor:pointer;font-size:14px;transition:.15s;position:relative;white-space:nowrap;
+  }
+  .menu-item:hover{background:rgba(255,255,255,.06);color:#fff}
+  .menu-item.active{background:rgba(255,153,0,.14);color:#fff;font-weight:600}
+  .menu-item.active::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--amazon)}
+  .menu-item .mi-icon{font-size:15px;width:20px;text-align:center;flex:0 0 20px}
+
+  .sidebar-foot{padding:12px 18px;border-top:1px solid rgba(255,255,255,.07);font-size:12px;color:#6b7684}
+  .sf-item{display:flex;align-items:center;gap:8px;padding:3px 0}
+  .sf-dot{width:7px;height:7px;border-radius:50%;background:#2eb872;display:inline-block}
+
+  /* ============ 主区域 ============ */
+  .main{flex:1;margin-left:var(--sidebar-w);display:flex;flex-direction:column;min-height:100vh}
+  .topbar{
+    height:var(--topbar-h);background:var(--card);border-bottom:1px solid var(--line-soft);
+    display:flex;align-items:center;gap:16px;padding:0 24px;position:sticky;top:0;z-index:40;
+  }
+  .hamburger{display:none;font-size:20px;cursor:pointer;background:none;border:none;color:var(--ink);line-height:1;padding:4px}
+  .topbar-title{font-size:16px;font-weight:700}
+  .topbar-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .searchbox{
+    display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line-soft);
+    border-radius:8px;padding:7px 12px;font-size:13px;color:var(--muted);cursor:text;width:200px;
+  }
+  .user{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+  .avatar{width:30px;height:30px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+
+  .content{flex:1;padding:24px;max-width:1240px;width:100%;margin:0 auto}
+  .content-foot{padding:16px 24px;border-top:1px solid var(--line-soft);font-size:12px;color:#8a9099;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+
+  /* ============ 页面切换 ============ */
+  .page{display:none}
+  .page.active{display:block;animation:fade .2s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  .page-head{margin-bottom:20px}
+  .page-head h2{font-size:20px;font-weight:800;margin-bottom:4px}
+  .page-head .desc{color:var(--muted);font-size:13px;max-width:720px}
+
+  /* ============ 卡片 ============ */
+  .card{background:var(--card);border:1px solid var(--line-soft);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px}
+
+  /* ============ 仪表盘 ============ */
+  .dash-hero{
+    background:var(--card);border:1px solid var(--line-soft);border-radius:var(--radius);box-shadow:var(--shadow);
+    padding:22px 24px;margin-bottom:20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+  }
+  .dash-hero h1{font-size:20px;font-weight:800;margin-bottom:6px;color:var(--ink)}
+  .dash-hero h1 .hl{color:var(--amazon-dark)}
+  .dash-hero p{color:var(--muted);font-size:13px;max-width:560px}
+  .dash-hero .dh-tag{color:var(--muted);font-size:12px;margin-left:auto;white-space:nowrap}
+
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+  .kpi{background:var(--card);border:1px solid var(--line-soft);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 18px}
+  .kpi .kpi-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .kpi .kpi-label{font-size:12px;color:var(--muted);font-weight:600}
+  .kpi .kpi-val{font-size:26px;font-weight:800;line-height:1;letter-spacing:-.3px}
+  .kpi .kpi-trend{font-size:12px;margin-top:8px;font-weight:700}
+  .kpi .kpi-trend.pos{color:var(--green)}
+  .kpi .kpi-trend.neg{color:var(--red)}
+  .kpi .kpi-compare{color:var(--muted);font-weight:400;margin-left:4px}
+
+  .dash-cols{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:20px}
+  .dash-panel{background:var(--card);border:1px solid var(--line-soft);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px}
+  .dash-panel .dp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .dash-panel .dp-title{font-size:14px;font-weight:700}
+  .dash-panel .dp-sub{font-size:12px;color:var(--muted)}
+  .dash-panel canvas{width:100%;display:block}
+  .quick-actions{display:flex;flex-direction:column;gap:8px}
+  .qa-item{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--line-soft);border-radius:9px;cursor:pointer;transition:.15s;font-size:13px}
+  .qa-item:hover{border-color:var(--amazon);background:#fff8ee}
+  .qa-item .qa-icon{font-size:16px}
+  .qa-item .qa-arrow{margin-left:auto;color:#c4ccd4}
+  .demo-tag{font-size:11px;background:#fff3e0;color:var(--amazon-dark);padding:2px 8px;border-radius:10px;font-weight:700;margin-left:8px}
+
+  /* 告警过滤 chips（仿 IvyeaOps 驾驶舱） */
+  .alert-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .alert-chip{font-size:12px;padding:6px 12px;border-radius:16px;border:1px solid var(--line);background:#fff;cursor:pointer;transition:.15s;font-weight:600;color:var(--muted);user-select:none}
+  .alert-chip:hover{border-color:var(--ink);color:var(--ink)}
+  .alert-chip.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  table.cmp .ads-check{width:15px;height:15px;cursor:pointer;accent-color:var(--amazon)}
+
+  .section-title{font-size:15px;font-weight:700;margin:24px 0 12px;display:flex;align-items:center;gap:8px}
+  .section-title .st-line{width:4px;height:16px;border-radius:2px;background:var(--amazon)}
+
+  .quick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+  .quick-card{
+    background:var(--card);border:1px solid var(--line-soft);border-radius:var(--radius);box-shadow:var(--shadow);
+    padding:18px;cursor:pointer;transition:.16s;display:flex;flex-direction:column;gap:8px;
+  }
+  .quick-card:hover{border-color:var(--amazon);transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+  .quick-card .qc-top{display:flex;align-items:center;justify-content:space-between}
+  .quick-card .qc-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;background:#f4f5f7}
+  .quick-card .qc-arrow{color:#c4ccd4;font-size:16px;transition:.15s}
+  .quick-card:hover .qc-arrow{color:var(--amazon);transform:translateX(3px)}
+  .quick-card .qc-name{font-size:15px;font-weight:700}
+  .quick-card .qc-desc{font-size:12px;color:var(--muted);line-height:1.5}
+
+  /* ============ 表单 ============ */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-bottom:20px}
+  .field label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px}
+  .field input,.field select,.field textarea{
+    width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;
+    font-size:14px;color:var(--ink);background:#fff;outline:none;transition:.15s;font-family:inherit;
+  }
+  .field textarea{resize:vertical;min-height:120px;line-height:1.5}
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--amazon);box-shadow:0 0 0 3px rgba(255,153,0,.15)}
+  .field .unit{color:var(--muted);font-size:12px;margin-left:4px}
+  .field .hint{color:var(--muted);font-size:12px;margin-top:4px}
+
+  .btn{background:var(--amazon);color:var(--ink);border:none;border-radius:8px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer;transition:.15s}
+  .btn:hover{background:var(--amazon-dark)}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted);font-weight:600}
+  .btn.ghost:hover{border-color:var(--ink);color:var(--ink)}
+  .btn.small{padding:7px 14px;font-size:13px}
+  .btn-row{display:flex;gap:10px;flex-wrap:wrap}
+
+  .result{margin-top:20px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:20px;display:none}
+  .result.show{display:block}
+  .result h3{font-size:13px;color:var(--muted);font-weight:700;margin-bottom:14px;text-transform:uppercase;letter-spacing:.5px}
+  .metric-row{display:flex;flex-wrap:wrap;gap:12px}
+  .metric{flex:1 1 130px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px}
+  .metric .k{font-size:12px;color:var(--muted)}
+  .metric .v{font-size:22px;font-weight:800;margin-top:2px}
+  .metric .v.good{color:var(--green)} .metric .v.bad{color:var(--red)} .metric .v.warn{color:var(--amazon-dark)}
+
+  .bar-wrap{height:10px;background:#eef1f4;border-radius:6px;overflow:hidden;margin:8px 0 4px}
+  .bar{height:100%;background:linear-gradient(90deg,var(--amazon),var(--amazon-dark));border-radius:6px;transition:width .4s}
+
+  .feedback{margin-top:14px;font-size:13px;padding:12px 14px;border-radius:8px;border:1px solid var(--line);background:#fff;display:none}
+  .feedback.show{display:block}
+  .feedback.ok{border-color:#bfe3c8;background:#f0faf2}
+  .feedback.warn{border-color:#ffe0b0;background:#fff8ee}
+  .feedback.bad{border-color:#f3c1c1;background:#fdf1f1}
+
+  .score-big{font-size:56px;font-weight:800;line-height:1}
+  .score-label{font-size:13px;color:var(--muted)}
+  .criteria{list-style:none;margin-top:8px}
+  .criteria li{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px dashed var(--line);font-size:14px}
+  .criteria li:last-child{border-bottom:none}
+
+  /* Listing 优化 */
+  .chk-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:10px}
+  .chk-item{display:flex;align-items:flex-start;gap:10px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px;cursor:pointer;transition:.14s}
+  .chk-item:hover{border-color:var(--amazon)}
+  .chk-item.on{border-color:#bfe3c8;background:#f6fcf8}
+  .chk-item input{margin-top:3px;width:16px;height:16px;accent-color:var(--green);flex:0 0 16px;cursor:pointer}
+  .chk-item .cw-body{flex:1;min-width:0}
+  .chk-item .ct{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700}
+  .chk-item .cw{font-size:11px;font-weight:700;color:var(--amazon-dark);background:#fff3e0;border-radius:10px;padding:1px 7px;flex:0 0 auto}
+  .chk-item .cd{display:block;font-size:12px;color:var(--muted);line-height:1.5;margin-top:3px}
+  .chk-result{display:none;margin-top:18px;padding-top:16px;border-top:1px dashed var(--line)}
+  .chk-result.show{display:block}
+  .chk-top{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+  .bl-list{display:flex;flex-direction:column;gap:6px;margin-top:14px}
+  .bl-item{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px;line-height:1.55}
+  .bl-idx{font-weight:800;color:var(--muted);flex:0 0 16px}
+  .bl-body{flex:1;min-width:0;word-break:break-word}
+  .bl-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+  .bl-tag{font-size:11px;padding:1px 7px;border-radius:10px;background:#f2f4f7;color:var(--muted);font-weight:600}
+  .bl-tag.bad{background:#fdf1f1;color:var(--red)}
+  .bl-tag.ok{background:#eef8f0;color:var(--green)}
+  .kw-controls{display:grid;grid-template-columns:1.2fr .8fr 1.6fr auto;gap:10px;align-items:end;margin-bottom:10px}
+  .kw-controls .field{margin:0}
+  .kw-status{font-size:12.5px;color:var(--muted);margin:2px 0 12px;line-height:1.6}
+  .kw-filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  .kw-filters .chip{padding:5px 11px;border:1px solid var(--line);border-radius:16px;font-size:12px;cursor:pointer;background:#fff;color:var(--muted);font-weight:600;transition:.14s;user-select:none}
+  .kw-filters .chip:hover{border-color:var(--ink);color:var(--ink)}
+  .kw-filters .chip.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .kw-table-wrap{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+  table.kw-table{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.kw-table th{position:sticky;top:0;background:#f7f8fa;text-align:left;padding:9px 10px;font-weight:700;color:var(--muted);white-space:nowrap;border-bottom:1px solid var(--line);z-index:1}
+  table.kw-table td{padding:8px 10px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  table.kw-table tr:last-child td{border-bottom:none}
+  .kw-txt{font-weight:600;word-break:break-word;min-width:200px}
+  .kw-yes{color:var(--green);font-weight:700}
+  .kw-no{color:#c4ccd4}
+  .kw-badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 5px;border-radius:8px;margin-right:6px;vertical-align:1px}
+  .kw-badge.q{background:#eef3ff;color:var(--blue)}
+  .kw-badge.p{background:#f4eefd;color:var(--purple)}
+  .kw-product{font-size:12px;color:var(--muted);background:var(--bg);border-radius:8px;padding:8px 12px;margin-bottom:12px;line-height:1.6}
+  @media(max-width:820px){.kw-controls{grid-template-columns:1fr 1fr}}
+  .gd-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .gd-tabs .chip{padding:5px 11px;border:1px solid var(--line);border-radius:16px;font-size:12px;cursor:pointer;background:#fff;color:var(--muted);font-weight:600;transition:.14s;user-select:none}
+  .gd-tabs .chip:hover{border-color:var(--ink);color:var(--ink)}
+  .gd-tabs .chip.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .gd-panel{font-size:13px;line-height:1.75}
+  .gd-panel h4{font-size:13px;font-weight:800;margin:16px 0 6px}
+  .gd-panel h4:first-child{margin-top:0}
+  .gd-panel ul{padding-left:18px;margin:4px 0}
+  .gd-panel li{margin-bottom:4px}
+  .gd-panel code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#f2f4f7;border-radius:4px;padding:1px 5px}
+  .gd-key{font-weight:700}
+  .gd-formula{background:#fff8ee;border:1px solid #ffe0b0;border-radius:8px;padding:10px 12px;margin:0 0 8px}
+  .gd-code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#f5f7fa;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0;line-height:1.7;word-break:break-word}
+  .gd-note{font-size:12px;color:var(--muted);background:var(--bg);border-left:3px solid var(--amazon);border-radius:6px;padding:8px 12px;margin:12px 0 0}
+
+  /* 关键词五池 */
+  .pool-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+  .pool-card{background:#fff;border:1px solid var(--line);border-left:4px solid var(--amazon);border-radius:10px;padding:14px}
+  .pool-card .pk{font-size:12px;color:var(--muted)}
+  .pool-card .pv{font-size:26px;font-weight:800;margin-top:2px}
+  .pool-card[data-pool="listing"]{border-left-color:var(--green)}
+  .pool-card[data-pool="ad"]{border-left-color:var(--blue)}
+  .pool-card[data-pool="watch"]{border-left-color:var(--amazon)}
+  .pool-card[data-pool="negative"]{border-left-color:var(--red)}
+  .pool-card[data-pool="brand"]{border-left-color:var(--purple)}
+  .pool-list h4{font-size:14px;margin:18px 0 8px;display:flex;align-items:center;gap:8px}
+  .pool-list h4 .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .pool-list .count{font-size:12px;color:var(--muted);font-weight:600}
+  .kw-chips{display:flex;flex-wrap:wrap;gap:6px}
+  .kw-chip{font-size:12px;padding:5px 10px;border-radius:16px;border:1px solid var(--line);background:#fff;cursor:pointer;transition:.12s;user-select:none}
+  .kw-chip:hover{border-color:var(--ink)}
+  .kw-chip[data-pool="listing"]{background:#eef8f0;border-color:#bfe3c8}
+  .kw-chip[data-pool="ad"]{background:#eaf3fb;border-color:#bcd7ee}
+  .kw-chip[data-pool="watch"]{background:#fff8ee;border-color:#ffe0b0}
+  .kw-chip[data-pool="negative"]{background:#fdf1f1;border-color:#f3c1c1}
+  .kw-chip[data-pool="brand"]{background:#f3effb;border-color:#d9c9f0}
+  .empty-hint{font-size:12px;color:#aaa;font-style:italic}
+
+  /* 文件上传区 */
+  .upload-zone{border:2px dashed #d4d9de;border-radius:10px;background:#fafbfc;padding:26px 20px;text-align:center;cursor:pointer;transition:.16s}
+  .upload-zone:hover,.upload-zone.drag{border-color:var(--amazon);background:#fff8ee}
+  .upload-zone .uz-icon{font-size:30px;margin-bottom:8px}
+  .upload-zone .uz-main{font-size:14px;font-weight:600;color:var(--ink)}
+  .upload-zone .uz-browse{color:var(--blue);font-weight:700}
+  .upload-zone .uz-hint{font-size:12px;color:var(--muted);margin-top:6px}
+  .upload-file{display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 12px;background:#eef8f0;border:1px solid #bfe3c8;border-radius:8px;font-size:13px}
+  .upload-file .uf-name{font-weight:600;color:var(--green);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .upload-file .uf-rows{color:var(--muted);font-size:12px;white-space:nowrap}
+  .upload-file .uf-remove{cursor:pointer;color:var(--red);font-weight:700;margin-left:4px}
+
+  /* 曲线图 */
+  .chart-wrap{margin:18px 0 4px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px}
+  .chart-head{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
+  .chart-head .chart-title{font-size:13px;font-weight:700;color:var(--ink)}
+  .chart-head .chart-toggle{font-size:12px;color:var(--muted);transition:.15s}
+  .chart-head:hover .chart-toggle{color:var(--amazon-dark)}
+  .chart-body{margin-top:10px}
+  .chart-body.collapsed{display:none}
+  .chart-wrap .chart-sub{font-size:12px;color:var(--muted);margin-bottom:12px}
+  .chart-wrap canvas{width:100%;display:block}
+  .chart-legend{display:flex;gap:16px;margin-top:10px;font-size:12px;color:var(--muted)}
+  .chart-legend .lg-item{display:flex;align-items:center;gap:6px}
+  .chart-legend .lg-dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+  /* 对比表格 */
+  table.cmp{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+  table.cmp th,table.cmp td{padding:10px 12px;text-align:right;border-bottom:1px solid var(--line)}
+  table.cmp th{background:var(--bg);color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+  table.cmp th:first-child,table.cmp td:first-child{text-align:left}
+  table.cmp tr.trap td{background:#fff8ee}
+  .tag-trap{font-size:11px;background:var(--amazon-dark);color:#fff;padding:2px 7px;border-radius:10px;margin-left:6px;font-weight:700}
+  table.cmp tr.neg td{background:#fdf1f1}
+  table.cmp tr.keep td{background:#eef8f0}
+  table.cmp tr.watch td{background:#fff8ee}
+  table.cmp tr.brand td{background:#f3effb}
+
+  /* 词海广告搭建 */
+  .ws-block{margin-bottom:22px}
+  .ws-block:last-child{margin-bottom:0}
+  .ws-block h4{font-size:14px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .ws-block h4 .ws-tag{font-size:11px;background:var(--bg);color:var(--muted);padding:2px 8px;border-radius:10px;font-weight:600}
+  .lvl-row{margin-bottom:14px}
+  .lvl-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+  .lvl-badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;color:#fff;white-space:nowrap}
+  .lvl-0{background:#8a9099} .lvl-1{background:var(--blue)} .lvl-2{background:var(--green)} .lvl-3{background:var(--amazon-dark)} .lvl-4{background:var(--purple)}
+  .lvl-name{font-size:13px;font-weight:700}
+  .lvl-desc{font-size:12px;color:var(--muted)}
+  .ws-arch{list-style:none;counter-reset:arch}
+  .ws-arch li{position:relative;padding:9px 0 9px 32px;border-bottom:1px dashed var(--line);font-size:13px;line-height:1.55}
+  .ws-arch li:last-child{border-bottom:none}
+  .ws-arch li::before{counter-increment:arch;content:counter(arch);position:absolute;left:0;top:10px;width:20px;height:20px;border-radius:50%;background:var(--bg);border:1px solid var(--line);color:var(--muted);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .ws-checklist{list-style:none}
+  .ws-checklist li{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px;line-height:1.5}
+  .ws-checklist li:last-child{border-bottom:none}
+  .ws-checklist input[type=checkbox]{margin-top:3px;accent-color:var(--amazon);flex:0 0 auto}
+  .ws-cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:700px){.ws-cols{grid-template-columns:1fr}}
+
+  /* ===== Alexa 词海一条龙 ===== */
+  .ws-flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .ws-flow-item{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);background:var(--card);border:1px solid var(--line-soft);border-radius:16px;padding:5px 12px}
+  .ws-flow-item b{color:var(--amazon-dark)}
+  .ws-flow-arrow{color:#c4ccd4;font-size:12px}
+  .ws-step{scroll-margin-top:calc(var(--topbar-h) + 16px)}
+  .ws-step-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-bottom:14px;margin-bottom:18px;border-bottom:1px solid var(--line-soft)}
+  .ws-step-no{width:28px;height:28px;border-radius:50%;background:var(--amazon);color:var(--ink);font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;flex:0 0 28px}
+  .ws-step-title{font-size:15px;font-weight:800;line-height:1.3}
+  .ws-step-sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .ws-step-head .btn{margin-left:auto}
+  .ws-autofill{background:#f0f7ff;border:1px solid #d6e8fb;color:#146EB4;border-radius:8px;padding:9px 12px;font-size:12px;line-height:1.55;margin-bottom:16px}
+  .ws-autofill.ok{background:#eef9f2;border-color:#cfe8d9;color:#007E2F}
+
+  /* ===== 任务台 ===== */
+  .dash-status{flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+  .ds-item{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);background:#fff;border:1px solid var(--line-soft);border-radius:14px;padding:4px 10px}
+  .ds-item b{color:var(--ink);font-weight:700}
+  .ds-dot{width:6px;height:6px;border-radius:50%;background:#c4ccd4;display:inline-block}
+  .ds-dot.ok{background:#2eb872}
+  .ds-dot.bad{background:var(--red)}
+  .task-desk{margin-bottom:20px}
+  .task-desk-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+  .task-desk-head h3{font-size:15px;font-weight:800}
+  .task-desk-head span{font-size:12px;color:var(--muted)}
+  .task-flows{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .task-flow{background:var(--card);border:1px solid var(--line-soft);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
+  .tf-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .tf-icon{width:32px;height:32px;border-radius:8px;background:#fff3e0;color:var(--amazon-dark);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:0 0 32px}
+  .tf-name{font-size:14px;font-weight:700;line-height:1.3}
+  .tf-sub{font-size:11.5px;color:var(--muted)}
+  .tf-steps{display:flex;flex-direction:column;gap:6px}
+  .tf-step{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:7px 9px;border:1px solid var(--line-soft);border-radius:7px;background:#fff;cursor:pointer;text-align:left;transition:.15s;font-family:inherit;color:var(--ink)}
+  .tf-step:hover{border-color:var(--amazon);background:#fff8ee}
+  .tf-step b{width:18px;height:18px;border-radius:50%;background:var(--bg);color:var(--muted);font-size:11px;display:flex;align-items:center;justify-content:center;flex:0 0 18px}
+  .tf-step span{flex:1;font-weight:600}
+  .tf-step em{font-style:normal;color:#8a9099;font-size:11px}
+  .dash-cols2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+  .act-list{display:flex;flex-direction:column}
+  .act-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:12.5px}
+  .act-item:last-child{border-bottom:none}
+  .act-tool{font-weight:700;color:var(--ink);min-width:96px}
+  .act-sum{color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .act-time{color:#8a9099;font-size:11px;white-space:nowrap}
+  .act-go{font-size:11px;color:var(--blue);cursor:pointer;background:none;border:none;padding:0;font-family:inherit}
+  .act-empty{color:var(--muted);font-size:12px;padding:6px 0;line-height:1.7}
+  .data-note{font-size:12px;color:var(--muted);line-height:1.75}
+  .data-note div{padding:5px 0;border-bottom:1px dashed var(--line)}
+  .data-note div:last-child{border-bottom:none}
+  .data-note b{color:var(--ink)}
+  @media(max-width:900px){
+    .task-flows{grid-template-columns:1fr}
+    .dash-cols2{grid-template-columns:1fr}
+  }
+
+  /* ===== 页面使用说明 ===== */
+  .page-guide{background:var(--card);border:1px solid var(--line-soft);border-radius:10px;box-shadow:var(--shadow);margin:-8px 0 16px;font-size:12.5px}
+  .page-guide summary{cursor:pointer;padding:10px 14px;font-weight:600;color:var(--muted);user-select:none;list-style:none;display:flex;align-items:center;gap:8px}
+  .page-guide summary::-webkit-details-marker{display:none}
+  .page-guide summary::before{content:'i';width:16px;height:16px;border-radius:50%;background:#eef1f4;color:var(--muted);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;font-style:italic;flex:0 0 16px}
+  .page-guide[open] summary{border-bottom:1px solid var(--line-soft);color:var(--ink)}
+  .pg-body{display:grid;grid-template-columns:1fr 1.6fr 1.3fr;gap:16px;padding:12px 14px 14px}
+  .pg-label{font-size:10.5px;font-weight:800;color:var(--amazon-dark);letter-spacing:.5px;margin-bottom:4px}
+  .pg-body ol{margin-left:16px;line-height:1.7;color:var(--ink)}
+  .pg-body ol li{margin-bottom:2px}
+  .pg-col>div:last-child{color:var(--muted);line-height:1.7}
+  @media(max-width:800px){.pg-body{grid-template-columns:1fr;gap:10px}}
+
+  /* Alexa 导购洞察 */
+  .alexa-mkt{display:flex;flex-wrap:wrap;gap:6px}
+  .alexa-mkt .chip{padding:5px 10px;border:1px solid var(--line);border-radius:16px;font-size:12px;cursor:pointer;background:#fff;color:var(--muted);font-weight:600;transition:.15s}
+  .alexa-mkt .chip.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .alexa-expand{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted);margin-top:8px}
+  .alexa-expand input[type=checkbox]{accent-color:var(--amazon)}
+  .alexa-count{font-size:12px;color:var(--muted);margin-top:8px}
+
+  /* 八面马风格 Tab + 汇总卡 + 筛选 + 分解表 */
+  .alx-tabs{display:flex;gap:0;border-bottom:2px solid var(--line-soft);margin-bottom:0;align-items:center}
+  .alx-tab{padding:14px 20px;font-size:14px;font-weight:600;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:.15s}
+  .alx-tab.active{color:var(--ink);border-bottom-color:var(--amazon)}
+  .alx-tab .alx-num{font-weight:800;margin-left:4px;color:var(--ink)}
+  .alx-right{margin-left:auto;display:flex;gap:10px;align-items:center}
+
+  .alx-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+  .alx-card{background:#fff;border:1px solid var(--line-soft);border-radius:10px;padding:14px 16px;box-shadow:0 1px 3px rgba(15,17,17,.04)}
+  .alx-card .alx-label{font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:600}
+  .alx-card .alx-val{font-size:22px;font-weight:800;color:var(--ink);line-height:1.1}
+  .alx-card .alx-sub{font-size:11px;color:var(--muted);margin-top:6px}
+
+  .alx-chart-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+  .alx-chart-card{background:#fff;border:1px solid var(--line-soft);border-radius:10px;padding:12px 14px}
+  .alx-cc-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .alx-cc-title{font-size:12.5px;font-weight:700;color:var(--ink)}
+  .alx-cc-sub{font-size:11px;color:var(--muted)}
+  .alx-cc-legend{display:flex;gap:10px;font-size:11px;color:var(--muted)}
+  .alx-cc-legend .lg-item{display:flex;align-items:center;gap:4px}
+  .alx-cc-legend .lg-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+
+  .alx-evidence{background:#fff;border:1px solid var(--line-soft);border-radius:10px;padding:14px;margin-bottom:16px}
+  .alx-ev-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .alx-ev-title{font-size:12.5px;font-weight:700;color:var(--ink)}
+  .alx-ev-sub{font-size:11px;color:var(--muted)}
+  .alx-ev-cloud{display:flex;flex-wrap:wrap;gap:6px 8px}
+  .alx-ev-chip{font-size:11px;padding:4px 10px;border-radius:12px;cursor:pointer;transition:.12s;display:inline-flex;align-items:center;gap:4px}
+  .alx-ev-chip:hover{transform:translateY(-1px);box-shadow:0 2px 6px rgba(0,0,0,.08)}
+  .alx-ev-chip .ev-count{font-weight:700}
+  .alx-ev-arrow{color:var(--muted);font-size:10px}
+  .alx-ev-pointers{font-size:10px;color:#888;font-style:italic}
+
+  .alx-filters{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;align-items:flex-start;padding:12px 14px;background:#fafbfc;border:1px solid var(--line-soft);border-radius:8px}
+  .alx-fgroup{display:flex;flex-direction:column;gap:5px}
+  .alx-flabel{font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+  .alx-fchs{display:flex;gap:5px;flex-wrap:wrap}
+  .alx-fchs .chip{padding:4px 9px;font-size:11.5px;border:1px solid var(--line-soft);border-radius:4px;background:#fff;cursor:pointer;color:var(--muted);font-weight:600;transition:.12s}
+  .alx-fchs .chip:hover{border-color:var(--ink);color:var(--ink)}
+  .alx-fchs .chip.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .alx-search{flex:1;min-width:240px;display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+  .alx-search input{flex:1;border:none;outline:none;font-size:13px;background:transparent}
+  .alx-search span{font-size:11px;color:var(--muted);font-weight:700;white-space:nowrap}
+
+  .alx-table-wrap{border:1px solid var(--line-soft);border-radius:8px;overflow:hidden;background:#fff}
+  table.alx-table{width:100%;border-collapse:collapse;font-size:13px}
+  table.alx-table th{background:#fafbfc;padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:12px;border-bottom:1px solid var(--line-soft);letter-spacing:.2px}
+  table.alx-table td{padding:10px 14px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+  table.alx-table tr:last-child td{border-bottom:none}
+  table.alx-table tr:hover td{background:#fafbfc}
+  .alx-badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:3px;font-weight:700;white-space:nowrap}
+  .alx-badge.l0{background:#e8eaed;color:#565959}
+  .alx-badge.l1{background:#e3f2fd;color:#146EB4}
+  .alx-badge.l2{background:#e8f5e9;color:#007E2F}
+  .alx-badge.l3{background:#fff3e0;color:#E47911}
+  .alx-badge.l4{background:#f3e5f5;color:#7D4BD0}
+  .alx-badge.q{background:#fff8ee;color:var(--amazon-dark)}
+  .alx-badge.p{background:#f2f3f5;color:#666}
+  .alx-core{font-weight:600;color:var(--ink)}
+  .alx-qual{color:var(--muted)}
+  .alx-intent{font-size:11.5px;color:var(--blue);background:#ebf5fb;padding:2px 8px;border-radius:10px;font-weight:600;white-space:nowrap}
+  .alx-keyword{color:var(--ink);font-weight:500;cursor:pointer}
+  .alx-keyword:hover{color:var(--amazon-dark)}
+  .alx-pager{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#fafbfc;border-top:1px solid var(--line-soft);font-size:12px;color:var(--muted)}
+  .alx-pager button{padding:4px 10px;border:1px solid var(--line);background:#fff;border-radius:4px;cursor:pointer;font-size:12px;color:var(--ink)}
+  .alx-pager button:hover:not(:disabled){border-color:var(--amazon)}
+  .alx-pager button:disabled{opacity:.4;cursor:not-allowed}
+
+  /* 遮罩（移动端） */
+  .mask{position:fixed;inset:0;background:rgba(15,17,17,.4);z-index:45;display:none}
+
+  @media(max-width:900px){
+    .sidebar{transform:translateX(-100%)}
+    .sidebar.open{transform:translateX(0)}
+    .main{margin-left:0}
+    .hamburger{display:block}
+    .kpi-grid{grid-template-columns:repeat(2,1fr)}
+    .dash-cols{grid-template-columns:1fr}
+    .searchbox{display:none}
+    .mask.show{display:block}
+  }
+  @media(max-width:600px){
+    .content{padding:16px}
+    .kpi-grid{grid-template-columns:1fr 1fr}
+    .dash-hero{padding:20px}
+    table.cmp{font-size:12px}
+    .user span{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ 左侧导航 ============ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-logo">亚</div>
+      <div>
+        <div class="brand-name">亚马逊卖家助手</div>
+        <div class="brand-badge">AI 运营工具集</div>
+      </div>
+    </div>
+    <nav class="menu">
+      <div class="menu-group">
+        <div class="menu-group-title">总览</div>
+        <a class="menu-item active" data-page="dashboard">运营仪表盘</a>
+      </div>
+      <div class="menu-group">
+        <div class="menu-group-title">广告运营</div>
+        <a class="menu-item" data-page="ads">广告搜索词分析</a>
+        <a class="menu-item" data-page="alexa">Alexa 导购洞察 · 词海搭建</a>
+        <a class="menu-item" data-page="asin">ASIN 产品分析</a>
+      </div>
+      <div class="menu-group">
+        <div class="menu-group-title">关键词</div>
+        <a class="menu-item" data-page="keywordpool">关键词五池分类</a>
+        <a class="menu-item" data-page="keyword">Listing 优化</a>
+      </div>
+      <div class="menu-group">
+        <div class="menu-group-title">市场调研</div>
+        <a class="menu-item" data-page="compare">竞品流量词对比</a>
+        <a class="menu-item" data-page="product">选品评分器</a>
+        <a class="menu-item" data-page="bsr">BSR 销量预估</a>
+      </div>
+      <div class="menu-group">
+        <div class="menu-group-title">财务</div>
+        <a class="menu-item" data-page="profit">FBA 利润计算器</a>
+      </div>
+      <div class="menu-group">
+        <div class="menu-group-title">数据接入</div>
+        <a class="menu-item" data-page="apiset">API 设置</a>
+      </div>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="sf-item"><span class="sf-dot" id="sf-dot"></span><span id="sf-text">正在检测后端…</span></div>
+      <div class="sf-item">计算类工具数据不出浏览器</div>
+    </div>
+  </aside>
+  <div class="mask" id="mask"></div>
+
+  <!-- ============ 主区域 ============ -->
+  <div class="main">
+    <header class="topbar">
+      <button class="hamburger" id="hamburger" aria-label="菜单">☰</button>
+      <div class="topbar-title" id="page-title">运营仪表盘</div>
+      <div class="topbar-right">
+        <div class="searchbox">🔍 搜索工具 / 功能…</div>
+        <div class="user"><span>卖家工作台</span><div class="avatar">卖</div></div>
+      </div>
+    </header>
+
+    <main class="content">
+
+      <!-- ============ 运营仪表盘 ============ -->
+      <section class="page" id="page-apiset">
+        <div class="page-head">
+          <h2>亚马逊 API 接入</h2>
+          <p class="desc">对接亚马逊官方 SP-API（Selling Partner API），拉取真实销售 / 订单数据。凭据通过后端环境变量注入，前端不接触密钥。</p>
+        </div>
+        <div class="card">
+          <div class="metric-row" style="margin-bottom:16px">
+            <div class="metric"><div class="k">凭据配置</div><div class="v" id="apiset-ready">—</div></div>
+            <div class="metric"><div class="k">已配置项</div><div class="v" id="apiset-count">—</div></div>
+            <div class="metric"><div class="k">站点区域</div><div class="v" id="apiset-region">—</div></div>
+          </div>
+          <div class="field" style="margin-bottom:16px">
+            <label>缺少的凭据环境变量</label>
+            <div id="apiset-missing" style="font-size:13px;color:var(--muted)">加载中…</div>
+          </div>
+          <div class="btn-row">
+            <button class="btn" id="apiset-test" onclick="testConnection()">测试连接</button>
+            <button class="btn ghost" onclick="loadApiConfig()">刷新状态</button>
+          </div>
+          <div class="feedback" id="apiset-result"></div>
+          <div class="hint" style="margin-top:14px">支持的环境变量：SP_API_LWA_CLIENT_ID / SP_API_LWA_CLIENT_SECRET / SP_API_LWA_REFRESH_TOKEN / SP_API_AWS_ACCESS_KEY_ID / SP_API_AWS_SECRET_ACCESS_KEY / SP_API_ROLE_ARN / SP_API_REGION / SP_API_MARKETPLACE_ID。</div>
+        </div>
+      </section>
+
+      <!-- ============ Alexa 导购洞察 · 词海广告一条龙 ============ -->
+      <section class="page" id="page-alexa">
+        <div class="page-head">
+          <h2>Alexa 导购洞察 · 词海广告一条龙</h2>
+          <p class="desc">ASIN / 种子词 → 真实搜索词 → 五级词库 → 广告搭建方案，全流程在一页完成。抓取结束后会自动把真实搜索词里的场景、人群、材质、功能词根带入词海搭建，无需手动搬运。</p>
+          <div class="ws-flow">
+            <span class="ws-flow-item"><b>①</b> 导入 ASIN / 种子词</span>
+            <span class="ws-flow-arrow">→</span>
+            <span class="ws-flow-item"><b>②</b> 抓取真实搜索词</span>
+            <span class="ws-flow-arrow">→</span>
+            <span class="ws-flow-item"><b>③</b> 自动生成词海方案</span>
+          </div>
+        </div>
+
+        <div class="card" id="alx-step1">
+          <!-- ASIN 搜索优先区 -->
+          <div class="field" style="margin-bottom:10px">
+            <label>🔎 通过 ASIN 搜索产品 → 自动提取类目 + 种子词 → 一键抓取 Alexa</label>
+            <div style="display:flex;gap:8px">
+              <input type="text" id="alx-asin" style="flex:1;text-transform:uppercase;font-family:monospace" placeholder="输入 ASIN，如 B09V3KXJPB" maxlength="10" onkeydown="if(event.key==='Enter')importAlxAsin()">
+              <select id="alx-asin-mkt" style="width:140px">
+                <option value="US" selected>amazon.com (US)</option>
+                <option value="UK">amazon.co.uk (UK)</option>
+                <option value="DE">amazon.de (DE)</option>
+                <option value="FR">amazon.fr (FR)</option>
+                <option value="IT">amazon.it (IT)</option>
+                <option value="ES">amazon.es (ES)</option>
+                <option value="JP">amazon.co.jp (JP)</option>
+                <option value="CA">amazon.ca (CA)</option>
+              </select>
+              <button class="btn" style="white-space:nowrap" id="alx-asin-btn" onclick="importAlxAsin()">🔍 搜索 ASIN</button>
+            </div>
+            <div class="hint">后端直连 amazon.com/dp/ASIN（Cookie 会话绕过验证码），自动识别 brand / 类目 / title 关键词，选中即可直接跑 Alexa 扩展。</div>
+          </div>
+
+          <!-- ASIN 搜索结果卡 -->
+          <div id="alx-asin-preview" style="display:none;background:#fafbfc;border:1px solid var(--line-soft);border-radius:10px;padding:14px;margin-bottom:12px">
+            <div style="display:grid;grid-template-columns:72px 1fr;gap:14px;align-items:flex-start">
+              <img id="alx-asin-img" style="width:72px;height:72px;object-fit:contain;border-radius:6px;background:#fff;border:1px solid var(--line-soft)">
+              <div>
+                <div id="alx-asin-title" style="font-size:13px;color:var(--ink);font-weight:700;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:6px"></div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">
+                  <span id="alx-asin-brand" style="font-size:11px;background:#e3f2fd;color:#146EB4;padding:2px 8px;border-radius:4px;font-weight:700"></span>
+                  <span id="alx-asin-stars" style="font-size:11px;background:#fff3e0;color:#E47911;padding:2px 8px;border-radius:4px;font-weight:700"></span>
+                  <span id="alx-asin-reviews" style="font-size:11px;background:#f3e5f5;color:#7D4BD0;padding:2px 8px;border-radius:4px;font-weight:700"></span>
+                  <span id="alx-asin-fba" style="display:none;font-size:11px;background:#e8f5e9;color:#007E2F;padding:2px 8px;border-radius:4px;font-weight:700">✓ FBA</span>
+                </div>
+                <!-- 类目 -->
+                <div id="alx-asin-cats" style="font-size:11.5px;color:var(--muted);margin-bottom:6px;line-height:1.5"></div>
+              </div>
+            </div>
+            <!-- 种子词预览 -->
+            <div style="margin-top:10px">
+              <div style="font-size:11px;color:var(--muted);margin-bottom:5px;font-weight:600">✅ 将用以下种子词跑 Alexa 扩展（品牌 + title 特征词，自动去噪）：</div>
+              <div id="alx-asin-seeds" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+            </div>
+            <!-- 直接抓取按钮 -->
+            <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+              <button class="btn" id="alx-asin-run" onclick="runAlexaFromAsin()">🚀 直接开始抓取 Alexa</button>
+              <button class="btn ghost" onclick="applyAlxAsin(true)">追加到手动种子词</button>
+              <button class="btn ghost" onclick="document.getElementById('alx-asin-preview').style.display='none'">✕ 关闭</button>
+              <span id="alx-asin-hint" style="margin-left:auto;font-size:11px;color:var(--muted)">自动使用真实搜索探针 · 站点跟随 ASIN</span>
+            </div>
+          </div>
+
+          <!-- 手动输入折叠区 -->
+          <details style="margin-top:8px">
+            <summary style="cursor:pointer;font-size:12px;color:var(--muted);user-select:none">✎ 手动输入种子词（不用 ASIN 时展开）</summary>
+            <div class="grid" style="grid-template-columns:2fr 1fr;margin-top:10px">
+              <div class="field">
+                <label>种子关键词（可多个，逗号/换行分隔）</label>
+                <textarea id="alexa-seeds" style="min-height:70px" placeholder="water bottle, insulated bottle"></textarea>
+              </div>
+              <div class="field">
+                <label>抓取站点</label>
+                <div class="alexa-mkt" id="alexa-mkt">
+                  <span class="chip active" data-m="US">US</span>
+                  <span class="chip" data-m="UK">UK</span>
+                  <span class="chip" data-m="DE">DE</span>
+                  <span class="chip" data-m="FR">FR</span>
+                  <span class="chip" data-m="IT">IT</span>
+                  <span class="chip" data-m="ES">ES</span>
+                  <span class="chip" data-m="JP">JP</span>
+                  <span class="chip" data-m="CA">CA</span>
+                </div>
+              </div>
+            </div>
+          </details>
+          <div class="alexa-expand">
+            <input type="checkbox" id="alexa-expand" checked>
+            <label for="alexa-expand">真实搜索探针（用 how/what/best/for/under/vs 等买家问法 + A-Z 补充，抓用户真实搜过的词句）</label>
+          </div>
+          <div class="btn-row" style="margin-top:14px">
+            <button class="btn" id="alexa-btn" onclick="runAlexa()">开始抓取</button>
+            <button class="btn ghost" onclick="exportAlexa()">导出全部 (CSV)</button>
+            <span class="alexa-count" id="alexa-info">通过后端代理直连亚马逊 autocomplete 端点，不走外部 API。</span>
+          </div>
+        </div>
+
+        <div class="result" id="res-alexa">
+          <!-- Tab 切换 -->
+          <div class="alx-tabs">
+            <div class="alx-tab active" data-tab="kw" onclick="switchAlxTab('kw')">关键词 <span class="alx-num" id="alx-tab-kw">0</span></div>
+            <div class="alx-tab" data-tab="q" onclick="switchAlxTab('q')">买家问句 <span class="alx-num" id="alx-tab-q">0</span></div>
+            <div class="alx-right">
+              <button class="btn" style="padding:6px 12px;font-size:12px" onclick="alxToWordSea(true)">⚡ 生成词海广告方案</button>
+              <button class="btn ghost" style="padding:6px 12px;font-size:12px" onclick="exportAlexa()">导出 CSV</button>
+            </div>
+          </div>
+
+          <!-- 汇总卡 -->
+          <div class="alx-summary">
+            <div class="alx-card">
+              <div class="alx-label">有效关键词</div>
+              <div class="alx-val" id="alx-sum-total">—</div>
+              <div class="alx-sub">来自亚马逊真实用户搜索补全</div>
+            </div>
+            <div class="alx-card">
+              <div class="alx-label">结果构成</div>
+              <div class="alx-val" id="alx-sum-mix">—</div>
+              <div class="alx-sub" id="alx-sum-mix-sub">关键词 + 买家问句</div>
+            </div>
+            <div class="alx-card">
+              <div class="alx-label">分层覆盖</div>
+              <div class="alx-val" id="alx-sum-level">—</div>
+              <div class="alx-sub">L0 × L4 级别</div>
+            </div>
+            <div class="alx-card">
+              <div class="alx-label">生成状态</div>
+              <div class="alx-val" id="alx-sum-status">—</div>
+              <div class="alx-sub" id="alx-sum-status-sub">请求 — 有效结果已生成</div>
+            </div>
+          </div>
+
+          <!-- 意图分布 + 分类 -->
+          <div class="alx-chart-row">
+            <div class="alx-chart-card">
+              <div class="alx-cc-head">
+                <div class="alx-cc-title">意图分布（按级别 L0-L4）</div>
+                <div class="alx-cc-legend">
+                  <span class="lg-item"><span class="lg-dot" style="background:#146EB4"></span>纯关键词</span>
+                  <span class="lg-item"><span class="lg-dot" style="background:#E47911"></span>买家问句</span>
+                </div>
+              </div>
+              <canvas id="alx-chart-level" height="180"></canvas>
+            </div>
+            <div class="alx-chart-card">
+              <div class="alx-cc-head">
+                <div class="alx-cc-title">意图分类（5 大类）</div>
+                <div class="alx-cc-sub" id="alx-intent-coverage">—</div>
+              </div>
+              <canvas id="alx-chart-intent" height="180"></canvas>
+            </div>
+          </div>
+
+          <!-- 限定词意图证据 -->
+          <div class="alx-evidence">
+            <div class="alx-ev-head">
+              <div class="alx-ev-title">限定词意图证据</div>
+              <div class="alx-ev-sub" id="alx-ev-sub">覆盖 — 条限定词 · — 条语义映射</div>
+            </div>
+            <div id="alx-ev-cloud" class="alx-ev-cloud"></div>
+          </div>
+
+          <!-- 筛选区 -->
+          <div class="alx-filters">
+            <div class="alx-fgroup">
+              <div class="alx-flabel">级别</div>
+              <div class="alx-fchs" id="alx-f-level"></div>
+            </div>
+            <div class="alx-fgroup">
+              <div class="alx-flabel">核心词</div>
+              <div class="alx-fchs" id="alx-f-core"></div>
+            </div>
+            <div class="alx-fgroup">
+              <div class="alx-flabel">意图</div>
+              <div class="alx-fchs" id="alx-f-intent"></div>
+            </div>
+            <div class="alx-fgroup" id="alx-f-qtype-group" style="display:none">
+              <div class="alx-flabel">问句类型</div>
+              <div class="alx-fchs" id="alx-f-qtype"></div>
+            </div>
+            <div class="alx-search">
+              <input type="text" id="alx-f-search" placeholder="搜索关键词 / 限定词 / 意图…" oninput="renderAlxTable()">
+              <span id="alx-f-count">— 条</span>
+            </div>
+          </div>
+
+          <!-- 分解表 -->
+          <div class="alx-table-wrap">
+            <table class="alx-table" id="alx-table">
+              <thead>
+                <tr>
+                  <th style="width:42%">关键词 / 问句</th>
+                  <th style="width:60px">级别</th>
+                  <th style="width:14%">核心词</th>
+                  <th style="width:18%">限定词</th>
+                  <th style="width:90px">意图</th>
+                </tr>
+              </thead>
+              <tbody id="alx-tbody"></tbody>
+            </table>
+            <div class="alx-pager">
+              <span id="alx-pager-info">—</span>
+              <div>
+                <button id="alx-page-prev" onclick="changeAlxPage(-1)">上一页</button>
+                <button id="alx-page-next" onclick="changeAlxPage(1)">下一页</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ③ 词海广告搭建（由上方抓取结果自动带入） -->
+        <div class="card ws-step" id="ws-step" style="margin-top:20px">
+          <div class="ws-step-head">
+            <div class="ws-step-no">③</div>
+            <div>
+              <div class="ws-step-title">词海广告搭建</div>
+              <div class="ws-step-sub">词海打的是对话框里的提示词（词根组合 + 口语问句），不是传统搜索词。</div>
+            </div>
+            <button class="btn" onclick="buildWordSea()">⚡ 重新生成方案</button>
+          </div>
+          <div class="ws-autofill" id="ws-autofill-info">抓取真实搜索词后，这里会自动填入从 ASIN / 关键词中提取的词根；也可以直接手动修改。</div>
+          <div class="grid">
+            <div class="field"><label>产品词根（逗号分隔，可多个叫法）</label><input id="ws-product" placeholder="water bottle, insulated bottle"></div>
+            <div class="field"><label>类目平均 CPC (USD)</label><input id="ws-cpc" type="number" value="0.80" step="0.01"></div>
+          </div>
+          <div class="grid">
+            <div class="field"><label>材质 / 参数词根</label><textarea id="ws-material" placeholder="stainless steel&#10;plastic&#10;glass"></textarea></div>
+            <div class="field"><label>使用场景词根</label><textarea id="ws-scene" placeholder="for travel&#10;for hiking&#10;for gym"></textarea></div>
+          </div>
+          <div class="grid">
+            <div class="field"><label>适配人群词根</label><textarea id="ws-people" placeholder="for women&#10;for seniors"></textarea></div>
+            <div class="field"><label>痛点 / 功能词根</label><textarea id="ws-pain" placeholder="leak proof&#10;keeps cold&#10;bpa free"></textarea></div>
+          </div>
+          <div class="field" style="margin-bottom:16px">
+            <label>链接所处阶段</label>
+            <select id="ws-stage">
+              <option value="cold">冷启动（0~3 个月，少评低权重）</option>
+              <option value="growth" selected>成长期（3~12 个月，20+ 评论）</option>
+              <option value="mature">成熟期（BSR 稳定、评论充足）</option>
+            </select>
+            <div class="hint">阶段决定词海 / 漏斗预算配比与投放词层，按评论数与转化稳定性判断，而非上线时间。抓取过 ASIN 时会按评论数自动判断。</div>
+          </div>
+          <div class="btn-row">
+            <button class="btn" onclick="buildWordSea()">生成搭建方案</button>
+            <button class="btn ghost" onclick="exportWordSea()">导出方案 (TXT)</button>
+            <button class="btn ghost" onclick="resetWordSea()">清空</button>
+          </div>
+        </div>
+
+        <div class="result" id="res-wordsea">
+          <h3>搭建方案</h3>
+          <div class="ws-block">
+            <h4>预算配比 <span class="ws-tag" id="ws-stage-name"></span></h4>
+            <div class="metric-row" style="margin-bottom:12px">
+              <div class="metric"><div class="k">词海广告占比</div><div class="v" id="ws-sea">—</div></div>
+              <div class="metric"><div class="k">漏斗广告占比</div><div class="v" id="ws-funnel">—</div></div>
+              <div class="metric"><div class="k">词海投词层</div><div class="v" id="ws-sea-words" style="font-size:15px">—</div></div>
+              <div class="metric"><div class="k">漏斗投词层</div><div class="v" id="ws-funnel-words" style="font-size:15px">—</div></div>
+            </div>
+            <div class="feedback show" id="ws-budget-tip"></div>
+          </div>
+
+          <div class="ws-block">
+            <h4>五级词库分层（词海从 L2 起投）</h4>
+            <div id="ws-lvls"></div>
+          </div>
+
+          <div class="ws-block">
+            <h4>词根组合与口语问句（投放词示例）</h4>
+            <div id="ws-questions"></div>
+          </div>
+
+          <div class="ws-block">
+            <h4>广告架构（一词一活动 · 独立预算竞价）</h4>
+            <ol class="ws-arch" id="ws-arch"></ol>
+          </div>
+
+          <div class="ws-cols">
+            <div class="ws-block">
+              <h4>前置否定词库</h4>
+              <div id="ws-neg"></div>
+            </div>
+            <div class="ws-block">
+              <h4>SPV 视频投放（转化放大器）</h4>
+              <div id="ws-spv"></div>
+            </div>
+          </div>
+
+          <div class="ws-block">
+            <h4>执行自查清单（对照落地）</h4>
+            <ul class="ws-checklist" id="ws-checklist"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="page active" id="page-dashboard">
+        <div class="dash-hero">
+          <div>
+            <h1>欢迎回来，<span class="hl">卖家</span></h1>
+            <p>不用先想“该进哪个工具”。选一条任务链，按步骤走完；抓到的真实搜索词会直接带入下一步。</p>
+          </div>
+          <span class="dh-tag">今日 · 2026-11-24</span>
+          <div class="dash-status">
+            <span class="ds-item"><span class="ds-dot ok"></span>本地计算 <b>已就绪</b></span>
+            <span class="ds-item"><span class="ds-dot" id="ds-alexa-dot"></span>Alexa 抓取 <b id="ds-alexa">检测中…</b></span>
+            <span class="ds-item"><span class="ds-dot ok"></span>记录存储 <b>仅本机浏览器</b></span>
+          </div>
+        </div>
+
+        <div class="kpi-grid" id="dash-kpi">
+          <div class="kpi"><div class="kpi-label">Alexa 实时关键词</div><div class="kpi-val" id="kpi-alexa-total">—</div><div class="kpi-trend pos" id="kpi-alexa-time">加载中…</div></div>
+          <div class="kpi"><div class="kpi-label">买家问句</div><div class="kpi-val" id="kpi-alexa-q">—</div><div class="kpi-trend" id="kpi-alexa-q-sub">等待数据</div></div>
+          <div class="kpi"><div class="kpi-label">分层覆盖 L0-L4</div><div class="kpi-val" id="kpi-levels" style="font-size:18px;letter-spacing:-.5px">—</div><div class="kpi-trend" id="kpi-core-count">核心词 0</div></div>
+          <div class="kpi"><div class="kpi-label">自动刷新</div><div class="kpi-val" id="kpi-refresh" style="font-size:18px">—</div><div class="kpi-trend pos" id="kpi-next">加载中…</div></div>
+        </div>
+
+        <div class="task-desk">
+          <div class="task-desk-head">
+            <h3>按任务开始</h3>
+            <span>不用记工具名，按链点下去就行</span>
+          </div>
+          <div class="task-flows">
+            <div class="task-flow">
+              <div class="tf-head"><div class="tf-icon">新</div><div><div class="tf-name">新品上市</div><div class="tf-sub">先算账，再做内容，最后投词海</div></div></div>
+              <div class="tf-steps">
+                <button class="tf-step" data-goto="product"><b>1</b><span>选品评分</span><em>算潜力</em></button>
+                <button class="tf-step" data-goto="profit"><b>2</b><span>FBA 利润</span><em>算底线</em></button>
+                <button class="tf-step" data-goto="keyword"><b>3</b><span>Listing 体检</span><em>补内容</em></button>
+                <button class="tf-step" data-goto="alexa"><b>4</b><span>Alexa 词海</span><em>建广告</em></button>
+              </div>
+            </div>
+            <div class="task-flow">
+              <div class="tf-head"><div class="tf-icon">广</div><div><div class="tf-name">广告优化</div><div class="tf-sub">先判断词，再建词海，最后校准竞品</div></div></div>
+              <div class="tf-steps">
+                <button class="tf-step" data-goto="ads"><b>1</b><span>搜索词判断</span><em>否 / 留</em></button>
+                <button class="tf-step" data-goto="keywordpool"><b>2</b><span>五池分类</span><em>归档</em></button>
+                <button class="tf-step" data-goto="alexa"><b>3</b><span>Alexa 词海</span><em>扩量</em></button>
+                <button class="tf-step" data-goto="compare"><b>4</b><span>竞品流量词</span><em>校准</em></button>
+              </div>
+            </div>
+            <div class="task-flow">
+              <div class="tf-head"><div class="tf-icon">竞</div><div><div class="tf-name">竞品调研</div><div class="tf-sub">先扒详情，再比流量，最后看容量</div></div></div>
+              <div class="tf-steps">
+                <button class="tf-step" data-goto="asin"><b>1</b><span>ASIN 分析</span><em>扒详情</em></button>
+                <button class="tf-step" data-goto="compare"><b>2</b><span>流量词对比</span><em>比口径</em></button>
+                <button class="tf-step" data-goto="bsr"><b>3</b><span>BSR 预估</span><em>看容量</em></button>
+                <button class="tf-step" data-goto="keyword"><b>4</b><span>Listing 借鉴</span><em>拆写法</em></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-cols">
+          <div class="dash-panel">
+            <div class="dp-head"><div class="dp-title">近 30 天销售趋势</div><div class="dp-sub">演示数据 · 不代表你的店铺</div></div>
+            <canvas id="dash-trend" height="240"></canvas>
+          </div>
+          <div class="dash-panel">
+            <div class="dp-head">
+              <div class="dp-title">Alexa Top 核心词</div>
+              <div class="dp-sub"><span id="top-cores-status">加载中…</span> · 自动刷新</div>
+            </div>
+            <div id="top-cores-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+            <div style="margin-top:14px;font-size:12px;color:var(--muted);line-height:1.7;border-top:1px dashed var(--line);padding-top:12px">亚马逊 autocomplete 实时抓取 · 每 <b style="color:var(--ink)">3 小时</b> 后台自动刷新一次，下次更新时间显示在 KPI 卡片中。</div>
+          </div>
+        </div>
+
+        <div class="section-title"><span class="st-line"></span>全部工具 <span class="demo-tag">10 个</span></div>
+        <div class="quick-grid">
+          <div class="quick-card" data-page="ads"><div class="qc-top"><span class="qc-name">广告搜索词分析</span><span class="qc-arrow">→</span></div><div class="qc-desc">多维判断每个词「否 / 留 / 观察」，白名单品牌词保护。</div></div>
+          <div class="quick-card" data-page="alexa"><div class="qc-top"><span class="qc-name">Alexa 导购洞察 · 词海搭建</span><span class="qc-arrow">→</span></div><div class="qc-desc">ASIN / 种子词抓真实搜索词，一条龙生成五级词海与广告方案。</div></div>
+          <div class="quick-card" data-page="asin"><div class="qc-top"><span class="qc-name">ASIN 产品分析</span><span class="qc-arrow">→</span></div><div class="qc-desc">抓取竞品标题、卖点、类目、评分与主图。</div></div>
+          <div class="quick-card" data-page="keywordpool"><div class="qc-top"><span class="qc-name">关键词五池分类</span><span class="qc-arrow">→</span></div><div class="qc-desc">自动归入 Listing / 广告 / 观察 / 否定 / 品牌隔离。</div></div>
+          <div class="quick-card" data-page="keyword"><div class="qc-top"><span class="qc-name">Listing 优化</span><span class="qc-arrow">→</span></div><div class="qc-desc">标题 + 五点 + 关键词反查 + 完整度自检 + 实战手册。</div></div>
+          <div class="quick-card" data-page="compare"><div class="qc-top"><span class="qc-name">竞品流量词对比</span><span class="qc-arrow">→</span></div><div class="qc-desc">份额 → 绝对量口径校准，识别「口径陷阱」。</div></div>
+          <div class="quick-card" data-page="product"><div class="qc-top"><span class="qc-name">选品评分器</span><span class="qc-arrow">→</span></div><div class="qc-desc">0-100 多维度潜力评分，快速判断选品。</div></div>
+          <div class="quick-card" data-page="bsr"><div class="qc-top"><span class="qc-name">BSR 销量预估</span><span class="qc-arrow">→</span></div><div class="qc-desc">按类目 BSR 排名估算日 / 月销量。</div></div>
+          <div class="quick-card" data-page="profit"><div class="qc-top"><span class="qc-name">FBA 利润计算器</span><span class="qc-arrow">→</span></div><div class="qc-desc">单件毛利、毛利率与盈亏平衡点测算。</div></div>
+          <div class="quick-card" data-page="apiset"><div class="qc-top"><span class="qc-name">API 设置</span><span class="qc-arrow">→</span></div><div class="qc-desc">配置 SP-API 凭据并测试连通性，供后续数据接入。</div></div>
+        </div>
+
+        <div class="dash-cols2">
+          <div class="dash-panel">
+            <div class="dp-head"><div class="dp-title">最近记录</div><div class="dp-sub">只存本机浏览器 · 最多 6 条</div></div>
+            <div id="dash-activity" class="act-list"><div class="act-empty">还没有记录。跑一次抓词、关键词反查或方案生成后会出现在这里。</div></div>
+          </div>
+          <div class="dash-panel">
+            <div class="dp-head"><div class="dp-title">数据口径</div><div class="dp-sub">哪些是真的，哪些是演示</div></div>
+            <div class="data-note">
+              <div><b>实时抓取：</b>Alexa 搜索词、ASIN 详情、关键词反查与覆盖判断，直连亚马逊，受对方限流影响。</div>
+              <div><b>本地计算：</b>广告判断、五池分类、利润、选品评分、BSR 估算，数据不上传服务器。</div>
+              <div><b>演示数据：</b>「近 30 天销售趋势」为示意曲线，不代表你的店铺表现。</div>
+              <div><b>不编造：</b>关键词反查只给真实搜索词与覆盖情况，不提供搜索量 / 竞争度估算。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 广告搜索词分析 ============ -->
+      <section class="page" id="page-ads">
+        <div class="page-head">
+          <h2>广告搜索词分析</h2>
+          <p class="desc">粘贴广告搜索词报告，多维度判断每个词「否 / 留 / 观察」——不搞「ACOS 高就一刀切」，样本不足先观察、白名单品牌词保护、无转化纯烧钱才否。</p>
+        </div>
+        <div class="card">
+          <div class="grid" style="grid-template-columns:1fr 1fr">
+            <div class="field">
+              <label>搜索词报告（CSV / TXT：词, 点击, 花费, 销售额）</label>
+              <div class="upload-zone" id="ads-drop">
+                <div class="uz-main">拖拽文件到此处，或 <span class="uz-browse">点击上传</span></div>
+                <div class="uz-hint">支持 .csv / .txt / .tsv，每行：词, 点击, 花费, 销售额（可含表头）</div>
+                <input type="file" id="ads-file" accept=".csv,.txt,.tsv,text/csv,text/plain" style="display:none">
+              </div>
+              <div class="upload-file" id="ads-fileinfo" style="display:none">
+                <span class="uf-name" id="ads-filename"></span><span class="uf-rows" id="ads-filerows"></span><span class="uf-remove" id="ads-fileremove" title="移除文件">✕</span>
+              </div>
+              <details style="margin-top:10px">
+                <summary style="cursor:pointer;font-size:13px;color:var(--muted)">或手动粘贴数据（点击展开）</summary>
+                <textarea id="ads-input" style="min-height:160px;margin-top:8px">cat litter mat, 120, 45.60, 210.00
+cat litter mat large, 8, 3.20, 0
+cat litter mat waterproof, 60, 18.00, 95.00
+cat litter mat for litter box, 35, 40.00, 55.00
+cat litter trap mat, 5, 2.10, 0
+double layer cat litter mat, 25, 30.00, 42.00
+honeycomb cat litter mat, 14, 6.50, 0
+cat litter mat xl, 90, 22.00, 130.00
+cat litter mat for multiple cats, 7, 4.80, 0
+cat litter mat with lip, 40, 15.00, 60.00
+cat litter mat washable, 55, 12.00, 88.00
+cat litter mat non slip, 30, 9.50, 0
+cat litter mat for kittens, 3, 1.20, 0
+frisco cat litter mat, 80, 55.00, 70.00
+cat litter mat cheap, 22, 12.00, 10.00</textarea>
+              </details>
+              <div class="hint">示例数据，可上传你导出的搜索词报告，或手动粘贴替换。</div>
+            </div>
+            <div>
+              <div class="field" style="margin-bottom:14px">
+                <label>白名单 / 品牌防御词（即使数据差也保留）</label>
+                <textarea id="ads-whitelist" style="min-height:70px">frisco
+purina</textarea>
+                <div class="hint">品牌防御词「亏点也得留」，命中即跳过否定判断。</div>
+              </div>
+              <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+                <div class="field"><label>最小点击样本</label><input id="ads-minclick" type="number" value="10" min="1"></div>
+                <div class="field"><label>目标 ACOS %</label><input id="ads-target" type="number" value="25" step="1"></div>
+                <div class="field"><label>高 ACOS 阈值 %</label><input id="ads-high" type="number" value="40" step="1"></div>
+              </div>
+              <div class="hint" style="margin-top:10px">判断标准由你定义：样本不足的词不急着否、先观察；这些阈值就是「自我复核」的硬护栏。</div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn" onclick="calcAds(true)">分析搜索词</button>
+          </div>
+          <div class="result" id="res-ads">
+            <h3>分析结果 · 多维判断</h3>
+            <div class="metric-row" style="margin-bottom:12px">
+              <div class="metric"><div class="k">总词数</div><div class="v" id="ads-total">—</div></div>
+              <div class="metric"><div class="k">建议否定</div><div class="v" id="ads-neg">—</div></div>
+              <div class="metric"><div class="k">建议保留/加仓</div><div class="v" id="ads-keep">—</div></div>
+              <div class="metric"><div class="k">观察 / 样本不足</div><div class="v" id="ads-watch">—</div></div>
+              <div class="metric"><div class="k">白名单保护</div><div class="v" id="ads-brand">—</div></div>
+            </div>
+            <div class="alert-chips" id="ads-chips"></div>
+            <div class="chart-wrap" id="ads-chart-wrap">
+              <div class="chart-head" onclick="toggleChart()">
+                <span class="chart-title">花费 vs 销售额 曲线（按花费降序）</span>
+                <span class="chart-toggle" id="ads-chart-toggle">收起 ▲</span>
+              </div>
+              <div class="chart-body" id="ads-chart-body">
+                <div class="chart-sub">直观对比每个词「烧了多少钱」与「换回多少销售」，找出烧钱高、转化低的词。</div>
+                <canvas id="ads-chart" height="260"></canvas>
+                <div class="chart-legend">
+                  <span class="lg-item"><span class="lg-dot" style="background:#FF9900"></span>花费 Spend</span>
+                  <span class="lg-item"><span class="lg-dot" style="background:#146EB4"></span>销售额 Sales</span>
+                </div>
+              </div>
+            </div>
+            <div style="overflow-x:auto"><table class="cmp" id="ads-table"></table></div>
+            <div class="btn-row" style="margin-top:14px">
+              <button class="btn small" onclick="copyNegList()">复制否词清单</button>
+              <button class="btn small ghost" onclick="downloadNegCsv()">下载否词 CSV</button>
+              <button class="btn small ghost" onclick="downloadReport()">下载巡检报告</button>
+              <button class="btn small" onclick="exportSelected()">导出已选执行清单 (<span id="ads-selcount">0</span>)</button>
+            </div>
+            <div class="feedback" id="f-ads"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ ASIN 产品分析 ============ -->
+      <section class="page" id="page-asin">
+        <div class="page-head">
+          <h2>ASIN 产品分析</h2>
+          <p class="desc">输入一个 ASIN，后端直接抓取亚马逊产品页（标题 / 品牌 / 评分 / Review / 卖点 / 产品参数 / 类目 / 卖家 / 主图），并从标题自动反查 autocomplete 扩展相关词。直连 amazon.com/dp/{ASIN}，不需要 SP-API 凭据。</p>
+        </div>
+
+        <div class="card">
+          <div class="grid" style="grid-template-columns:2fr 1fr">
+            <div class="field">
+              <label>ASIN</label>
+              <div style="display:flex;gap:8px">
+                <input type="text" id="asin-input" style="flex:1;text-transform:uppercase;font-family:monospace" placeholder="B09V3KXJPB" maxlength="10">
+                <button class="btn" id="asin-btn" onclick="runAsin()">抓取分析</button>
+              </div>
+              <div class="hint">10 位字母数字，如 B09V3KXJPB。后端直连 amazon.com/dp/ASIN，约 5-10 秒。</div>
+            </div>
+            <div class="field">
+              <label>站点</label>
+              <select id="asin-mkt">
+                <option value="US" selected>Amazon.com (US)</option>
+                <option value="UK">Amazon.co.uk (UK)</option>
+                <option value="DE">Amazon.de (DE)</option>
+                <option value="FR">Amazon.fr (FR)</option>
+                <option value="IT">Amazon.it (IT)</option>
+                <option value="ES">Amazon.es (ES)</option>
+                <option value="JP">Amazon.co.jp (JP)</option>
+                <option value="CA">Amazon.ca (CA)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="result" id="res-asin">
+          <!-- 左侧产品卡 -->
+          <div style="display:grid;grid-template-columns:280px 1fr;gap:18px;margin-bottom:18px" id="asin-product-row">
+            <div style="background:#fff;border:1px solid var(--line-soft);border-radius:10px;padding:14px;text-align:center">
+              <img id="asin-img" style="max-width:100%;max-height:240px;border-radius:6px;background:var(--bg)" src="" alt="">
+              <div style="font-size:11px;color:var(--muted);margin-top:8px" id="asin-host">—</div>
+            </div>
+            <div>
+              <div style="font-size:15px;font-weight:700;margin-bottom:8px" id="asin-title">等待抓取…</div>
+              <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+                <span style="font-size:12px;background:#fff8ee;color:var(--amazon-dark);padding:3px 10px;border-radius:4px;font-weight:700">ASIN: <span id="asin-code" style="font-family:monospace">—</span></span>
+                <span style="font-size:12px;background:#e3f2fd;color:#146EB4;padding:3px 10px;border-radius:4px;font-weight:700">Brand: <span id="asin-brand">—</span></span>
+                <span style="font-size:12px;background:#e8f5e9;color:#007E2F;padding:3px 10px;border-radius:4px;font-weight:700">★ <span id="asin-stars">—</span></span>
+                <span style="font-size:12px;background:#f3e5f5;color:#7D4BD0;padding:3px 10px;border-radius:4px;font-weight:700"><span id="asin-reviews">—</span> 评价</span>
+                <span id="asin-fba-badge" style="display:none;font-size:11px;background:#e8f5e9;color:#007E2F;padding:3px 8px;border-radius:4px;font-weight:700">FBA</span>
+              </div>
+              <div style="font-size:12px;color:var(--muted);margin-bottom:10px">卖家: <span id="asin-seller">—</span></div>
+              <div id="asin-cats" style="font-size:12px;color:var(--muted);margin-bottom:12px">类目: —</div>
+              <div id="asin-bullets" style="display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--ink);line-height:1.6"></div>
+            </div>
+          </div>
+
+          <!-- 产品参数表格 -->
+          <div style="background:#fff;border:1px solid var(--line-soft);border-radius:10px;padding:14px;margin-bottom:16px">
+            <div style="font-size:13px;font-weight:700;margin-bottom:10px">产品参数（Product Details）</div>
+            <div id="asin-details" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px 14px"></div>
+          </div>
+
+          <!-- 种子词 + 扩展词 -->
+          <div style="background:#fff;border:1px solid var(--line-soft);border-radius:10px;padding:14px;margin-bottom:16px">
+            <div style="font-size:13px;font-weight:700;margin-bottom:10px">关键词种子（从标题 + 卖点自动提取）</div>
+            <div id="asin-seeds" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+          </div>
+
+          <div style="background:#fff;border:1px solid var(--line-soft);border-radius:10px;padding:14px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div style="font-size:13px;font-weight:700">扩展相关词（title → autocomplete）</div>
+              <div style="font-size:11px;color:var(--muted)" id="asin-related-count">—</div>
+            </div>
+            <div id="asin-related" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 关键词五池分类 ============ -->
+      <section class="page" id="page-keywordpool">
+        <div class="page-head">
+          <h2>关键词库五池分类</h2>
+          <p class="desc">粘贴一批相关词，自动归入「Listing / 广告 / 观察 / 否定 / 品牌隔离」五池，并核对总量。点击词可手动改判，让每个词都有明确去处。</p>
+        </div>
+        <div class="card">
+          <div class="grid" style="grid-template-columns:1fr 1fr">
+            <div class="field">
+              <label>关键词列表（每行一个，可用逗号/制表符分隔）</label>
+              <textarea id="kw-input">cat litter mat
+cat litter mat large
+cat litter mat waterproof
+cat litter mat for litter box
+cat litter trap mat
+double layer cat litter mat
+honeycomb cat litter mat
+cat litter mat xl
+cat litter mat for multiple cats
+cat litter mat with lip
+cat litter mat washable
+cat litter mat non slip
+cat litter mat machine washable
+cat litter mat for kittens
+frisco cat litter mat
+petco cat litter mat
+diy cat litter mat
+cat litter mat replacement
+how to make a cat litter mat
+cat litter mat cheap</textarea>
+              <div class="hint">示例数据，可清空后粘贴你自己的词库。</div>
+            </div>
+            <div>
+              <div class="field" style="margin-bottom:14px">
+                <label>品牌词（每行一个，命中即进「品牌隔离」池）</label>
+                <textarea id="kw-brands" style="min-height:70px">frisco
+petco
+purina
+petmate</textarea>
+              </div>
+              <div class="field">
+                <label>否定 / 无关词（命中即进「否定」池）</label>
+                <textarea id="kw-negative" style="min-height:70px">diy
+replacement
+how to
+cheap
+free
+parts</textarea>
+                <div class="hint">判断标准由你定义：品牌词单独隔离监控，不直接否定。</div>
+              </div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn" onclick="classifyKeywords()">开始分类</button>
+            <button class="btn ghost" onclick="copyPools()">复制五池结果</button>
+            <button class="btn ghost" onclick="resetKeywords()">清空</button>
+          </div>
+          <div class="result" id="res-keywordpool">
+            <h3>分类结果 · 总量核对</h3>
+            <div class="metric-row" style="margin-bottom:16px">
+              <div class="metric"><div class="k">总词数（去重）</div><div class="v" id="kw-total">—</div></div>
+              <div class="metric"><div class="k">已归类</div><div class="v" id="kw-assigned">—</div></div>
+              <div class="metric"><div class="k">差额</div><div class="v" id="kw-diff">—</div></div>
+            </div>
+            <div class="pool-summary" id="kw-summary"></div>
+            <div class="pool-list" id="kw-pools"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 竞品流量词对比 ============ -->
+      <section class="page" id="page-compare">
+        <div class="page-head">
+          <h2>竞品流量词对比（份额 → 绝对量校准）</h2>
+          <p class="desc">单看某词在 A、B 间的「份额」会误判强弱。输入各自的总搜索量盘子，还原成绝对量后对比——份额高不代表绝对流量大。</p>
+        </div>
+        <div class="card">
+          <div class="grid">
+            <div class="field"><label>A 周搜索总量（盘子）</label><input id="c-total-a" type="number" value="953000" step="1000"></div>
+            <div class="field"><label>B 周搜索总量（盘子）</label><input id="c-total-b" type="number" value="296000" step="1000"></div>
+          </div>
+          <div class="field" style="margin-bottom:14px">
+            <label>关键词对比行（每行：词, A份额%, B份额%）</label>
+            <textarea id="c-rows" style="min-height:110px">cat tree, 14.1, 45.4
+cat tree tower, 22.0, 30.0
+cat scratching post, 40.0, 25.0</textarea>
+            <div class="hint">份额为百分比数字；程序会自动还原绝对量并标出「份额领先但绝对量落后」的口径陷阱。</div>
+          </div>
+          <div class="btn-row">
+            <button class="btn" onclick="calcCompare()">计算对比</button>
+          </div>
+          <div class="result" id="res-compare">
+            <h3>对比结果</h3>
+            <div class="metric-row" style="margin-bottom:12px">
+              <div class="metric"><div class="k">A 盘子</div><div class="v" id="c-va">—</div></div>
+              <div class="metric"><div class="k">B 盘子</div><div class="v" id="c-vb">—</div></div>
+              <div class="metric"><div class="k">B / A 盘子比</div><div class="v" id="c-ratio">—</div></div>
+            </div>
+            <div style="overflow-x:auto"><table class="cmp" id="c-table"></table></div>
+            <div class="feedback" id="f-compare"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ FBA 利润计算器 ============ -->
+      <section class="page" id="page-profit">
+        <div class="page-head">
+          <h2>FBA 利润计算器</h2>
+          <p class="desc">输入售价与各项成本，快速估算单件毛利与利润率，并给出盈亏平衡价。</p>
+        </div>
+        <div class="card">
+          <div class="grid">
+            <div class="field"><label>售价 (USD)</label><input id="p-price" type="number" value="24.99" step="0.01"></div>
+            <div class="field"><label>采购成本 (USD)</label><input id="p-cost" type="number" value="6.00" step="0.01"></div>
+            <div class="field"><label>头程运费 / 件 (USD)</label><input id="p-freight" type="number" value="1.50" step="0.01"></div>
+            <div class="field"><label>FBA 配送费 (USD)</label><input id="p-fba" type="number" value="5.32" step="0.01"></div>
+            <div class="field"><label>佣金率 (%)</label><input id="p-commission" type="number" value="15" step="0.1"></div>
+            <div class="field"><label>广告费 / 件 (USD)</label><input id="p-ad" type="number" value="2.00" step="0.01"></div>
+          </div>
+          <button class="btn" onclick="calcProfit()">计算利润</button>
+          <div class="result" id="res-profit">
+            <h3>测算结果</h3>
+            <div class="metric-row">
+              <div class="metric"><div class="k">单件毛利</div><div class="v" id="m-profit">—</div></div>
+              <div class="metric"><div class="k">毛利率</div><div class="v" id="m-margin">—</div></div>
+              <div class="metric"><div class="k">盈亏平衡点</div><div class="v" id="m-breakeven">—</div></div>
+            </div>
+            <div class="feedback" id="f-profit"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ Listing 优化 ============ -->
+      <section class="page" id="page-keyword">
+        <div class="page-head">
+          <h2>Listing 优化</h2>
+          <p class="desc">标题体检 · 五点体检 · 关键词反查 · 12 项完整度自检 · 内置实战手册：从标题、五点到关键词，一次补齐。</p>
+        </div>
+
+        <div class="card" style="margin-bottom:20px">
+          <div class="field" style="margin-bottom:16px">
+            <label>商品标题</label>
+            <input id="k-title" type="text" placeholder="例如：Stainless Steel Water Bottle 32oz, Insulated, Leak Proof..." value="Stainless Steel Insulated Water Bottle 32oz, Leak Proof, BPA Free, Keeps Cold 24h">
+          </div>
+          <button class="btn" onclick="calcKeyword()">分析标题</button>
+          <div class="result" id="res-keyword">
+            <h3>分析结果</h3>
+            <div class="metric-row">
+              <div class="metric"><div class="k">标题健康分</div><div class="v" id="k-score">—</div></div>
+              <div class="metric"><div class="k">字符数</div><div class="v" id="k-chars">—</div></div>
+              <div class="metric"><div class="k">单词数</div><div class="v" id="k-words">—</div></div>
+              <div class="metric"><div class="k">建议上限</div><div class="v" id="k-limit">—</div></div>
+            </div>
+            <div class="feedback" id="f-keyword"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:20px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:15px;font-weight:700">五点描述体检</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">一行一条共 5 条，检查条数、长度、首词、场景词、参数证据和与标题的重复度。</div>
+            </div>
+            <button class="btn ghost" onclick="fillBulletDemo()">填入示例</button>
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <textarea id="b-lines" style="height:170px" placeholder="每行一条五点描述，例如：&#10;KEEPS DRINKS COLD 24 HOURS: Double-wall vacuum insulation..."></textarea>
+          </div>
+          <button class="btn" onclick="calcBullets()">分析五点</button>
+          <div class="result" id="res-bullets">
+            <h3>五点分析</h3>
+            <div class="metric-row">
+              <div class="metric"><div class="k">健康分</div><div class="v" id="b-score">—</div></div>
+              <div class="metric"><div class="k">条数</div><div class="v" id="b-count">—</div></div>
+              <div class="metric"><div class="k">总词数</div><div class="v" id="b-words">—</div></div>
+              <div class="metric"><div class="k">平均每条</div><div class="v" id="b-avg">—</div></div>
+            </div>
+            <div class="feedback" id="f-bullets"></div>
+            <div class="bl-list" id="b-detail"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:20px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:15px;font-weight:700">关键词反查 · ASIN → 词表 → 覆盖检查</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">用 ASIN 拉取亚马逊真实搜索词，再检查这些词在标题和五点里覆盖了多少（不含付费搜索量）。</div>
+            </div>
+            <span class="demo-tag">真实搜索词</span>
+          </div>
+          <div class="kw-controls">
+            <div class="field">
+              <label>ASIN</label>
+              <input id="kw-asin" type="text" placeholder="B09V3KXJPB" maxlength="10" style="text-transform:uppercase">
+            </div>
+            <div class="field">
+              <label>站点</label>
+              <select id="kw-mkt">
+                <option value="US">美国 US</option>
+                <option value="UK">英国 UK</option>
+                <option value="DE">德国 DE</option>
+                <option value="FR">法国 FR</option>
+                <option value="IT">意大利 IT</option>
+                <option value="ES">西班牙 ES</option>
+                <option value="JP">日本 JP</option>
+                <option value="CA">加拿大 CA</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>种子词（可选）</label>
+              <input id="kw-seeds" type="text" placeholder="留空按 ASIN 自动生成，可填 1–5 个，逗号分隔">
+            </div>
+            <button class="btn" id="kw-btn" onclick="loadAsinKeywords()">反查关键词</button>
+          </div>
+          <div class="kw-status" id="kw-status">输入 ASIN（或种子词）后点击反查，首次约需 15–30 秒。</div>
+          <div class="result" id="res-kw">
+            <div class="kw-product" id="kw-product" style="display:none"></div>
+            <div class="metric-row">
+              <div class="metric"><div class="k">关键词</div><div class="v" id="kws-total">—</div></div>
+              <div class="metric"><div class="k">已覆盖</div><div class="v" id="kw-covered">—</div></div>
+              <div class="metric"><div class="k">未覆盖</div><div class="v" id="kw-miss">—</div></div>
+              <div class="metric"><div class="k">问句</div><div class="v" id="kw-q">—</div></div>
+            </div>
+            <div class="kw-filters" id="kw-filters"></div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+              <select id="kw-sort" onchange="renderKwTable()" style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit">
+                <option value="miss">未覆盖优先</option>
+                <option value="len">词长降序</option>
+                <option value="alpha">字母顺序</option>
+              </select>
+              <button class="btn ghost" onclick="copyMissKeywords()">复制未覆盖词</button>
+            </div>
+            <div class="kw-table-wrap">
+              <table class="kw-table">
+                <thead><tr><th>关键词</th><th>类型</th><th>意图</th><th>核心词</th><th>标题</th><th>五点</th><th>词数</th></tr></thead>
+                <tbody id="kw-rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:20px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:15px;font-weight:700">Listing 完整度自检</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">12 项高频检查点，勾选已做完的项，实时看到还差什么、该先补哪块。</div>
+            </div>
+            <button class="btn ghost" onclick="resetChecklist()">重置</button>
+          </div>
+          <div class="chk-list" id="chk-list"></div>
+          <div class="chk-result" id="chk-result">
+            <div class="chk-top">
+              <div style="text-align:center">
+                <div class="score-big" id="chk-score">0</div>
+                <div class="score-label">完整度 / 100</div>
+              </div>
+              <div style="flex:1;min-width:240px">
+                <div class="bar-wrap"><div class="bar" id="chk-bar" style="width:0%"></div></div>
+                <div style="font-size:12px;color:var(--muted)" id="chk-verdict">勾选左侧项目开始自检</div>
+              </div>
+            </div>
+            <div class="feedback" id="chk-miss"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:15px;font-weight:700">Listing 实战手册</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">把标题、五点、图片、关键词、A+ 和优化节奏的做法内置成清单，随查随用。</div>
+            </div>
+            <span class="demo-tag">内置知识</span>
+          </div>
+          <div class="gd-tabs" id="gd-tabs"></div>
+          <div class="gd-panel" id="gd-panel"></div>
+        </div>
+      </section>
+
+      <!-- ============ 选品评分器 ============ -->
+      <section class="page" id="page-product">
+        <div class="page-head">
+          <h2>选品评分器</h2>
+          <p class="desc">根据市场与产品维度打分（0-100），帮你快速判断选品潜力。</p>
+        </div>
+        <div class="card">
+          <div class="grid">
+            <div class="field"><label>预估月销量</label><input id="s-sales" type="number" value="800"></div>
+            <div class="field"><label>竞争度 (1-10，越低越好)</label><input id="s-comp" type="number" value="4" min="1" max="10"></div>
+            <div class="field"><label>毛利 (USD)</label><input id="s-profit" type="number" value="9.5" step="0.1"></div>
+            <div class="field"><label>客单价 (USD)</label><input id="s-price" type="number" value="24.99" step="0.01"></div>
+            <div class="field"><label>评论壁垒 (竞品评论数)</label><input id="s-review" type="number" value="1200"></div>
+            <div class="field"><label>差异化空间 (1-10)</label><input id="s-diff" type="number" value="7" min="1" max="10"></div>
+          </div>
+          <button class="btn" onclick="calcProduct()">计算评分</button>
+          <div class="result" id="res-product">
+            <h3>选品评分</h3>
+            <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+              <div class="score-big" id="s-score">—</div>
+              <div>
+                <div class="score-label" id="s-verdict">—</div>
+                <div class="bar-wrap" style="width:220px;margin-top:10px"><div class="bar" id="s-bar" style="width:0%"></div></div>
+              </div>
+            </div>
+            <ul class="criteria" id="s-criteria"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ BSR 销量预估 ============ -->
+      <section class="page" id="page-bsr">
+        <div class="page-head">
+          <h2>BSR 销量预估</h2>
+          <p class="desc">根据类目 BSR 排名粗略估算日销量（经验公式，仅供参考）。</p>
+        </div>
+        <div class="card">
+          <div class="grid">
+            <div class="field">
+              <label>类目</label>
+              <select id="b-cat">
+                <option value="0.35">小类目 / 利基市场</option>
+                <option value="0.55" selected>中等类目</option>
+                <option value="0.75">大类目 / 红海</option>
+              </select>
+            </div>
+            <div class="field"><label>BSR 排名</label><input id="b-rank" type="number" value="5000" min="1"></div>
+          </div>
+          <button class="btn" onclick="calcBsr()">预估销量</button>
+          <div class="result" id="res-bsr">
+            <h3>预估结果</h3>
+            <div class="metric-row">
+              <div class="metric"><div class="k">预估日销量</div><div class="v" id="b-daily">—</div></div>
+              <div class="metric"><div class="k">预估月销量</div><div class="v" id="b-monthly">—</div></div>
+              <div class="metric"><div class="k">系数</div><div class="v" id="b-coef">—</div></div>
+            </div>
+            <div class="feedback warn" style="display:block">说明：BSR 与销量的关系受类目、季节、价格等影响较大，结果仅为经验估算，请结合后台数据判断。</div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <footer class="content-foot">
+      <div>亚马逊卖家助手 · 纯前端本地计算，数据不会上传到任何服务器。</div>
+      <div>© 2026 · 仅用于运营参考，非亚马逊官方工具。不隶属于 Amazon.com, Inc.，结果仅供参考。</div>
+    </footer>
+  </div>
+</div>
+
+<script>
+  function num(id){ const v=parseFloat(document.getElementById(id).value); return isNaN(v)?0:v; }
+  function fmt(n,d=2){ return n.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+
+  // ===== 页面切换（侧边栏 + 快捷入口） =====
+  const PAGE_TITLES = {
+    dashboard:'运营仪表盘',
+    ads:'广告搜索词分析',
+    alexa:'Alexa 导购洞察 · 词海搭建',
+    asin:'ASIN 产品分析',
+    keywordpool:'关键词五池分类',
+    compare:'竞品流量词对比',
+    profit:'FBA 利润计算器',
+    keyword:'Listing 优化',
+    product:'选品评分器',
+    bsr:'BSR 销量预估',
+    apiset:'API 设置'
+  };
+  function switchPage(page){
+    document.querySelectorAll('.menu-item').forEach(x=>x.classList.toggle('active', x.dataset.page===page));
+    document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active', x.id==='page-'+page));
+    document.getElementById('page-title').textContent = PAGE_TITLES[page] || '运营仪表盘';
+    closeSidebar();
+    if(page==='ads' && lastAdsResults.length){ requestAnimationFrame(drawAdsChart); }
+    if(page==='dashboard'){ requestAnimationFrame(drawDashTrend); fetchDashboard(); }
+    if(page==='keyword'){ initListingTools(); }
+  }
+  document.querySelectorAll('.menu-item').forEach(m=>{
+    m.addEventListener('click',()=>switchPage(m.dataset.page));
+  });
+  document.querySelectorAll('.quick-card').forEach(c=>{
+    c.addEventListener('click',()=>switchPage(c.dataset.page));
+  });
+  document.querySelectorAll('.qa-item').forEach(c=>{
+    c.addEventListener('click',()=>switchPage(c.dataset.page));
+  });
+  // 任务台 / 最近记录里的跳转
+  document.addEventListener('click', (e) => {
+    const go = e.target.closest('[data-goto]');
+    if (!go) return;
+    switchPage(go.dataset.goto);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  // ===== 各页使用说明（用途 / 步骤 / 数据口径） =====
+  const PAGE_GUIDES = {
+    dashboard: {
+      use: '看今日实时数据，从任务链进入具体工具。',
+      steps: ['先看 KPI 与 Alexa Top 核心词，确认抓取正常', '从「按任务开始」选一条链（新品 / 广告 / 竞品）', '需要复盘时看「最近记录」'],
+      data: 'KPI 与核心词来自后台 Alexa 缓存（每 3 小时刷新）；销售趋势为演示数据。'
+    },
+    ads: {
+      use: '把广告搜索词判断成「否 / 留 / 观察」，不按 ACOS 一刀切。',
+      steps: ['上传 CSV/TXT，或粘贴：词, 点击, 花费, 销售额', '填品牌白名单与最小点击、目标 ACOS、高 ACOS 阈值', '点分析，按 chips 筛选；执行前人工复核'],
+      data: '纯本地计算，文件不上传；工具只给判断，不会直接改你的广告后台。'
+    },
+    alexa: {
+      use: 'ASIN / 种子词 → 真实搜索词 → 词海广告方案，一条龙完成。',
+      steps: ['输入 ASIN（自动提种子词）或手动填种子词', '保持真实搜索探针开启，点开始抓取', '看关键词 / 买家问句、意图分布与限定词证据', '第③步已自动带入词根并生成方案，可改后重算、导出'],
+      data: '直连 amazon.com/suggestions 实时抓取，后台每 3 小时刷新缓存；不提供搜索量 / 竞争度估算。'
+    },
+    asin: {
+      use: '抓取竞品详情，用于拆标题、卖点与类目。',
+      steps: ['输入 10 位 ASIN 与站点', '点抓取分析', '看标题、五点、类目、评分与主图'],
+      data: '实时抓取亚马逊商品页；受反爬影响，失败可稍后重试。'
+    },
+    keywordpool: {
+      use: '把关键词按用途归档，避免 Listing / 广告 / 否定混在一起。',
+      steps: ['按页面格式粘贴关键词与数据', '运行五池分类', '按分类结果复制或导出'],
+      data: '本地规则计算，判断标准可自行调整。'
+    },
+    keyword: {
+      use: 'Listing 标题、五点、关键词覆盖与完整度体检。',
+      steps: ['先做标题体检，按扣分项逐条改', '再做五点体检（条数 / 长度 / 场景 / 参数 / 与标题重复度）', '填 ASIN 或种子词做关键词反查，复制未覆盖词', '最后过 12 项完整度自检'],
+      data: '标题与五点体检纯本地；关键词反查实时抓亚马逊，只给覆盖判断，不给搜索量。'
+    },
+    compare: {
+      use: '竞品流量词份额与绝对量校准，识别「口径陷阱」。',
+      steps: ['填本品与竞品流量词数据', '运行对比', '看份额与实际量差异再下结论'],
+      data: '本地计算，数据需你粘贴。'
+    },
+    profit: {
+      use: '算单件毛利、毛利率与盈亏平衡点。',
+      steps: ['填售价、采购成本、头程、FBA 费用等', '点计算利润', '用毛利率与平衡点判断能不能做'],
+      data: '本地计算，结果为估算，以实际账单为准。'
+    },
+    product: {
+      use: '给选品打 0-100 分，快速初筛。',
+      steps: ['填销量、竞争度、利润、价格、评论、差异化', '点评分', '按分项得分看短板'],
+      data: '本地规则打分，仅作初筛参考。'
+    },
+    bsr: {
+      use: '按类目 BSR 排名估算日 / 月销量。',
+      steps: ['选类目、填 BSR 排名', '点预估', '对照市场容量判断'],
+      data: '本地估算模型，误差随类目变化。'
+    },
+    apiset: {
+      use: '查看 SP-API 凭据配置与连通性。',
+      steps: ['在后端环境变量注入凭据', '点测试连接', '缺项按页面提示补齐'],
+      data: '密钥只在服务端环境变量，前端不接触。'
+    }
+  };
+
+  function renderPageGuides() {
+    document.querySelectorAll('.page').forEach(sec => {
+      const key = sec.id.replace(/^page-/, '');
+      const g = PAGE_GUIDES[key];
+      if (!g) return;
+      const head = sec.querySelector('.page-head') || (key === 'dashboard' ? sec.querySelector('.dash-hero') : null);
+      if (!head || head.nextElementSibling && head.nextElementSibling.classList.contains('page-guide')) return;
+      const el = document.createElement('details');
+      el.className = 'page-guide';
+      el.innerHTML = '<summary>使用说明 · 用途 / 步骤 / 数据口径</summary>' +
+        '<div class="pg-body">' +
+          '<div class="pg-col"><div class="pg-label">用途</div><div>' + g.use + '</div></div>' +
+          '<div class="pg-col"><div class="pg-label">怎么用</div><ol>' + g.steps.map(s => '<li>' + s + '</li>').join('') + '</ol></div>' +
+          '<div class="pg-col"><div class="pg-label">数据与边界</div><div>' + g.data + '</div></div>' +
+        '</div>';
+      head.insertAdjacentElement('afterend', el);
+    });
+  }
+
+  // ===== 本机最近记录 =====
+  const ACT_KEY = 'amz_tools_activity_v1';
+  function logActivity(tool, summary, page) {
+    try {
+      const list = JSON.parse(localStorage.getItem(ACT_KEY) || '[]');
+      list.unshift({ tool, summary, page, at: Date.now() });
+      localStorage.setItem(ACT_KEY, JSON.stringify(list.slice(0, 20)));
+    } catch (e) { /* 隐私模式写入失败时静默 */ }
+    renderActivity();
+  }
+  function actTimeAgo(ts) {
+    const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+    if (s < 60) return s + ' 秒前';
+    if (s < 3600) return Math.round(s / 60) + ' 分钟前';
+    if (s < 86400) return Math.round(s / 3600) + ' 小时前';
+    return Math.round(s / 86400) + ' 天前';
+  }
+  function renderActivity() {
+    const el = document.getElementById('dash-activity');
+    if (!el) return;
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem(ACT_KEY) || '[]'); } catch (e) { }
+    if (!list.length) {
+      el.innerHTML = '<div class="act-empty">还没有记录。跑一次抓词、关键词反查或方案生成后会出现在这里。</div>';
+      return;
+    }
+    el.innerHTML = list.slice(0, 6).map(a =>
+      '<div class="act-item"><span class="act-tool">' + esc(a.tool) + '</span>' +
+      '<span class="act-sum" title="' + esc(a.summary) + '">' + esc(a.summary) + '</span>' +
+      '<span class="act-time">' + actTimeAgo(a.at) + '</span>' +
+      '<button class="act-go" data-goto="' + esc(a.page) + '">查看</button></div>'
+    ).join('');
+  }
+
+  // ===== 移动端侧边栏 =====
+  const sidebar = document.getElementById('sidebar');
+  const mask = document.getElementById('mask');
+  function openSidebar(){ sidebar.classList.add('open'); mask.classList.add('show'); }
+  function closeSidebar(){ sidebar.classList.remove('open'); mask.classList.remove('show'); }
+  document.getElementById('hamburger').addEventListener('click',openSidebar);
+  mask.addEventListener('click',closeSidebar);
+
+  // ===== 关键词五池 =====
+  const POOL_NAMES = {listing:'Listing / 标题', ad:'广告', watch:'观察', negative:'否定', brand:'品牌隔离'};
+  const POOL_COLORS = {listing:'var(--green)', ad:'var(--blue)', watch:'var(--amazon)', negative:'var(--red)', brand:'var(--purple)'};
+  let kwWords = []; // {text, pool}
+
+  function splitLines(v){
+    return v.split(/[\n,，\t]/).map(s=>s.trim().toLowerCase()).filter(Boolean);
+  }
+  function classifyKeywords(){
+    const words = splitLines(document.getElementById('kw-input').value);
+    const brands = splitLines(document.getElementById('kw-brands').value);
+    const negs = splitLines(document.getElementById('kw-negative').value);
+    const seen = new Set();
+    kwWords = [];
+    words.forEach(w=>{
+      if(seen.has(w)) return;
+      seen.add(w);
+      let pool = 'watch';
+      const hasBrand = brands.some(b=>b && w.includes(b));
+      const hasNeg = negs.some(n=>n && w.includes(n));
+      if(hasBrand) pool='brand';
+      else if(hasNeg) pool='negative';
+      else {
+        const wc = w.split(/\s+/).filter(Boolean).length;
+        pool = wc <= 2 ? 'listing' : 'ad';
+      }
+      kwWords.push({text:w, pool});
+    });
+    renderPools();
+    document.getElementById('res-keywordpool').classList.add('show');
+  }
+  function moveWord(text){
+    const it = kwWords.find(x=>x.text===text);
+    if(!it) return;
+    const order=['listing','ad','watch','negative','brand'];
+    const idx = order.indexOf(it.pool);
+    it.pool = order[(idx+1)%order.length];
+    renderPools();
+  }
+  function poolCounts(){
+    const c={listing:0,ad:0,watch:0,negative:0,brand:0};
+    kwWords.forEach(w=>c[w.pool]++);
+    return c;
+  }
+  function renderPools(){
+    const c = poolCounts();
+    const total = kwWords.length;
+    const assigned = Object.values(c).reduce((a,b)=>a+b,0);
+    document.getElementById('kw-total').textContent = total;
+    document.getElementById('kw-assigned').textContent = assigned;
+    const diffEl = document.getElementById('kw-diff');
+    const diff = total - assigned;
+    diffEl.textContent = diff;
+    diffEl.className = 'v ' + (diff===0?'good':'bad');
+
+    const summary = document.getElementById('kw-summary');
+    summary.innerHTML = Object.keys(POOL_NAMES).map(p=>{
+      return '<div class="pool-card" data-pool="'+p+'"><div class="pk">'+POOL_NAMES[p]+'</div><div class="pv" style="color:'+POOL_COLORS[p]+'">'+c[p]+'</div></div>';
+    }).join('');
+
+    const pools = document.getElementById('kw-pools');
+    pools.innerHTML = Object.keys(POOL_NAMES).map(p=>{
+      const items = kwWords.filter(w=>w.pool===p);
+      const chips = items.length
+        ? items.map(w=>'<span class="kw-chip" data-pool="'+p+'" onclick="moveWord(\''+w.text.replace(/'/g,"\\'")+'\')" title="点击改判（循环切换）">'+w.text+'</span>').join('')
+        : '<span class="empty-hint">（空）</span>';
+      return '<h4><span class="dot" style="background:'+POOL_COLORS[p]+'"></span>'+POOL_NAMES[p]+' <span class="count">'+items.length+' 词</span></h4><div class="kw-chips">'+chips+'</div>';
+    }).join('');
+  }
+  function copyPools(){
+    const c = poolCounts();
+    let out = '';
+    Object.keys(POOL_NAMES).forEach(p=>{
+      out += '['+POOL_NAMES[p]+'] ('+c[p]+')\n';
+      kwWords.filter(w=>w.pool===p).forEach(w=> out += w.text + '\n');
+      out += '\n';
+    });
+    out += '合计 ' + kwWords.length + ' 词，差额 ' + (kwWords.length - Object.values(c).reduce((a,b)=>a+b,0)) + '\n';
+    navigator.clipboard.writeText(out).then(()=>alert('已复制五池结果到剪贴板')).catch(()=>alert('复制失败，请手动选择复制'));
+  }
+  function resetKeywords(){
+    kwWords=[];
+    ['kw-input','kw-brands','kw-negative'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('res-keywordpool').classList.remove('show');
+  }
+
+  // ===== 广告搜索词分析 =====
+  const ADS_ACTION = {
+    brand:{label:'白名单保护', cls:'brand', color:'var(--purple)'},
+    keep:{label:'建议保留/加仓', cls:'keep', color:'var(--green)'},
+    watch:{label:'观察', cls:'watch', color:'var(--amazon)'},
+    low:{label:'样本不足', cls:'watch', color:'var(--amazon)'},
+    neg:{label:'建议否定', cls:'neg', color:'var(--red)'}
+  };
+  function calcAds(fromUser){
+    const minClick = Math.max(1, num('ads-minclick'));
+    const target = num('ads-target');
+    const high = num('ads-high');
+    const whitelist = splitLines(document.getElementById('ads-whitelist').value);
+
+    const rows = document.getElementById('ads-input').value.split('\n')
+      .map(l=>l.trim()).filter(Boolean)
+      .map(l=>{
+        const p = l.split(/[,，\t]/).map(s=>s.trim());
+        return {word:p[0]||'', clicks:parseFloat(p[1])||0, spend:parseFloat(p[2])||0, sales:parseFloat(p[3])||0};
+      }).filter(r=>r.word);
+
+    const results = rows.map(r=>{
+      const acos = r.sales>0 ? (r.spend/r.sales*100) : (r.spend>0 ? Infinity : 0);
+      let action, reason;
+      const isBrand = whitelist.some(b=>b && r.word.toLowerCase().includes(b.toLowerCase()));
+      if(isBrand){
+        action='brand'; reason='白名单/品牌防御词，即使数据差也保留';
+      } else if(r.clicks < minClick){
+        action='low'; reason='点击仅 '+r.clicks+' 次，样本不足，先观察别误否';
+      } else if(r.spend<=0){
+        action='watch'; reason='无消耗，暂不处理';
+      } else if(r.sales<=0){
+        action='neg'; reason='花费 $'+fmt(r.spend)+' 零转化，纯烧钱';
+      } else if(acos > high){
+        action='neg'; reason='ACOS '+fmt(acos,1)+'% 远超阈值，样本充足可否';
+      } else if(acos <= target){
+        action='keep'; reason='ACOS '+fmt(acos,1)+'% 健康，可加仓';
+      } else {
+        action='watch'; reason='ACOS '+fmt(acos,1)+'% 居中，观察波动';
+      }
+      return {word:r.word, clicks:r.clicks, spend:r.spend, sales:r.sales, acos, action, reason};
+    });
+
+    const cnt = {neg:0, keep:0, watch:0, brand:0};
+    results.forEach(r=>{
+      if(r.action==='neg') cnt.neg++;
+      else if(r.action==='keep') cnt.keep++;
+      else if(r.action==='brand') cnt.brand++;
+      else cnt.watch++;
+    });
+    document.getElementById('ads-total').textContent = results.length;
+    const negEl = document.getElementById('ads-neg');
+    negEl.textContent = cnt.neg;
+    negEl.className = 'v ' + (cnt.neg>0?'bad':'good');
+    document.getElementById('ads-keep').textContent = cnt.keep;
+    document.getElementById('ads-watch').textContent = cnt.watch;
+    document.getElementById('ads-brand').textContent = cnt.brand;
+
+    lastAdsResults = results;
+    renderAdsChips();
+    renderAdsTable();
+
+    const f = document.getElementById('f-ads');
+    const lowCount = results.filter(r=>r.action==='low').length;
+    f.className = 'feedback show ' + (cnt.neg>0?'warn':'ok');
+    f.innerHTML = cnt.neg>0
+      ? '⚠ 建议否定 <b>'+cnt.neg+'</b> 个词，其中 <b>'+lowCount+'</b> 个因样本不足暂缓判断。执行前请人工复核，确认白名单与相关性，避免误否品牌防御词。'
+      : '✓ 未发现需否定的词。仍建议人工核对，多维度复核后再动账户。';
+    document.getElementById('res-ads').classList.add('show');
+    drawAdsChart();
+    if (fromUser) logActivity('搜索词判断', results.length + ' 词 · 建议否定 ' + cnt.neg + ' · 保留 ' + cnt.keep, 'ads');
+  }
+
+  // ===== 文件上传（广告搜索词报告） =====
+  let lastAdsResults = [];
+  (function(){
+    const dropZone = document.getElementById('ads-drop');
+    const fileInput = document.getElementById('ads-file');
+    fileInput.addEventListener('click',e=>e.stopPropagation());
+    dropZone.addEventListener('click',()=>fileInput.click());
+    ['dragover','dragenter'].forEach(ev=>dropZone.addEventListener(ev,e=>{e.preventDefault();dropZone.classList.add('drag');}));
+    ['dragleave','drop'].forEach(ev=>dropZone.addEventListener(ev,e=>{e.preventDefault();dropZone.classList.remove('drag');}));
+    dropZone.addEventListener('drop',e=>{
+      const f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if(f) handleAdsFile(f);
+    });
+    fileInput.addEventListener('change',()=>{
+      const f = fileInput.files && fileInput.files[0];
+      if(f) handleAdsFile(f);
+    });
+    document.getElementById('ads-fileremove').addEventListener('click',e=>{
+      e.stopPropagation();
+      fileInput.value='';
+      document.getElementById('ads-fileinfo').style.display='none';
+    });
+  })();
+  function handleAdsFile(file){
+    const reader = new FileReader();
+    reader.onload = function(){
+      const text = String(reader.result||'').replace(/^\uFEFF/,'');
+      const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+      const dataLines = lines.filter(l=>{
+        const p = l.split(/[,，\t]/).map(s=>s.trim());
+        return p.length>=2 && !isNaN(parseFloat(p[1]));
+      });
+      if(!dataLines.length){ alert('未识别到有效数据，请确认格式：词, 点击, 花费, 销售额'); return; }
+      document.getElementById('ads-input').value = dataLines.join('\n');
+      document.getElementById('ads-filename').textContent = file.name;
+      document.getElementById('ads-filerows').textContent = dataLines.length + ' 行';
+      document.getElementById('ads-fileinfo').style.display = 'flex';
+      calcAds();
+    };
+    reader.readAsText(file);
+  }
+
+  // ===== 曲线图绘制 =====
+  function drawAdsChart(){
+    const canvas = document.getElementById('ads-chart');
+    if(!canvas || !lastAdsResults.length) return;
+    const dpr = window.devicePixelRatio || 1;
+    let w = canvas.parentElement.clientWidth;
+    if(w <= 0) w = Math.min(860, Math.max(320, window.innerWidth - 300));
+    const h = 260;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,h);
+
+    const N = Math.min(14, lastAdsResults.length);
+    const sorted = [...lastAdsResults].sort((a,b)=>b.spend-a.spend).slice(0,N).reverse();
+    const maxVal = Math.max(1, ...sorted.map(r=>Math.max(r.spend, r.sales)));
+
+    const padL = 46, padR = 14, padT = 16, padB = 36;
+    const plotW = w - padL - padR, plotH = h - padT - padB;
+    const x = i => padL + (sorted.length===1 ? plotW/2 : plotW*i/(sorted.length-1));
+    const y = v => padT + plotH*(1 - v/maxVal);
+
+    // 网格 + Y 轴
+    ctx.font = '11px -apple-system,Segoe UI,PingFang SC,sans-serif';
+    ctx.strokeStyle = '#eef1f4'; ctx.lineWidth = 1;
+    ctx.fillStyle = '#8a9099'; ctx.textAlign = 'right';
+    for(let t=0; t<=4; t++){
+      const v = maxVal*t/4, yy = y(v);
+      ctx.beginPath(); ctx.moveTo(padL,yy); ctx.lineTo(w-padR,yy); ctx.stroke();
+      ctx.fillText('$'+Math.round(v), padL-6, yy+4);
+    }
+    // X 轴标签
+    ctx.textAlign = 'center';
+    sorted.forEach((r,i)=>{
+      const label = r.word.length>9 ? r.word.slice(0,9)+'…' : r.word;
+      ctx.fillText(label, x(i), h-14);
+    });
+    ctx.textAlign = 'left';
+
+    function plot(key, color, fill){
+      ctx.beginPath();
+      sorted.forEach((r,i)=>{ const px=x(i), py=y(r[key]); i===0?ctx.moveTo(px,py):ctx.lineTo(px,py); });
+      ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.lineTo(x(sorted.length-1), y(0));
+      ctx.lineTo(x(0), y(0));
+      ctx.closePath();
+      ctx.fillStyle = fill; ctx.fill();
+      sorted.forEach((r,i)=>{
+        ctx.beginPath(); ctx.arc(x(i), y(r[key]), 3, 0, Math.PI*2); ctx.fillStyle = color; ctx.fill();
+      });
+    }
+    plot('sales', '#146EB4', 'rgba(20,110,180,.08)');
+    plot('spend', '#FF9900', 'rgba(255,153,0,.10)');
+  }
+
+  // ===== 曲线图折叠/展开 =====
+  function toggleChart(){
+    const body = document.getElementById('ads-chart-body');
+    const toggle = document.getElementById('ads-chart-toggle');
+    const collapsed = body.classList.toggle('collapsed');
+    toggle.textContent = collapsed ? '展开 ▼' : '收起 ▲';
+    if(!collapsed) requestAnimationFrame(drawAdsChart);
+  }
+
+  // ===== 告警过滤与导出（仿 IvyeaOps 巡检工作流） =====
+  let adsFilter = 'all';
+  const adsSelected = new Set();
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function renderAdsChips(){
+    const c = {
+      all: lastAdsResults.length,
+      zerosale: lastAdsResults.filter(r=>r.action==='neg' && r.sales<=0).length,
+      acos: lastAdsResults.filter(r=>r.action==='neg' && r.sales>0).length,
+      low: lastAdsResults.filter(r=>r.action==='low').length,
+      brand: lastAdsResults.filter(r=>r.action==='brand').length
+    };
+    const chips = [
+      {t:'all', label:'全部', n:c.all},
+      {t:'zerosale', label:'有花费零销售额', n:c.zerosale},
+      {t:'acos', label:'ACOS 破位', n:c.acos},
+      {t:'low', label:'样本不足', n:c.low},
+      {t:'brand', label:'白名单保护', n:c.brand}
+    ];
+    document.getElementById('ads-chips').innerHTML = chips.map(ch=>
+      '<span class="alert-chip '+(adsFilter===ch.t?'active':'')+'" onclick="filterAdsTable(\''+ch.t+'\')">'+ch.label+' ×'+ch.n+'</span>'
+    ).join('');
+  }
+  function renderAdsTable(){
+    const list = lastAdsResults.filter(r=>{
+      if(adsFilter==='all') return true;
+      if(adsFilter==='zerosale') return r.action==='neg' && r.sales<=0;
+      if(adsFilter==='acos') return r.action==='neg' && r.sales>0;
+      if(adsFilter==='low') return r.action==='low';
+      if(adsFilter==='brand') return r.action==='brand';
+      return true;
+    });
+    const tbody = list.map(r=>{
+      const acosStr = r.acos===Infinity ? '∞' : (r.acos===0 ? '—' : fmt(r.acos,1)+'%');
+      const a = ADS_ACTION[r.action];
+      const save = r.action==='neg' ? r.spend : 0;
+      return '<tr class="'+a.cls+'">'
+        + '<td><input type="checkbox" class="ads-check" data-word="'+esc(r.word)+'" '+(adsSelected.has(r.word)?'checked':'')+' onchange="toggleSelect(this)"></td>'
+        + '<td>'+esc(r.word)+'</td>'
+        + '<td>'+r.clicks+'</td>'
+        + '<td>$'+fmt(r.spend)+'</td>'
+        + '<td>$'+fmt(r.sales)+'</td>'
+        + '<td>'+acosStr+'</td>'
+        + '<td>'+(save>0?'<b style="color:var(--green)">$'+fmt(save)+'</b>':'—')+'</td>'
+        + '<td><b style="color:'+a.color+'">'+a.label+'</b><div style="font-size:11px;color:var(--muted)">'+r.reason+'</div></td>'
+        + '</tr>';
+    }).join('');
+    document.getElementById('ads-table').innerHTML =
+      '<thead><tr><th><input type="checkbox" class="ads-check" onchange="toggleAll(this)" title="全选当前列表"></th><th>搜索词</th><th>点击</th><th>花费</th><th>销售额</th><th>ACOS</th><th>可节省</th><th>建议</th></tr></thead><tbody>'+tbody+'</tbody>';
+    updateSelCount();
+  }
+  function filterAdsTable(t){
+    adsFilter = t;
+    renderAdsChips();
+    renderAdsTable();
+  }
+  function toggleSelect(el){
+    if(el.checked) adsSelected.add(el.dataset.word); else adsSelected.delete(el.dataset.word);
+    updateSelCount();
+  }
+  function toggleAll(el){
+    document.querySelectorAll('#ads-table .ads-check').forEach(c=>{
+      if(c===el) return;
+      c.checked = el.checked;
+      if(el.checked) adsSelected.add(c.dataset.word); else adsSelected.delete(c.dataset.word);
+    });
+    updateSelCount();
+  }
+  function updateSelCount(){
+    const el = document.getElementById('ads-selcount');
+    if(el) el.textContent = adsSelected.size;
+  }
+  function downloadText(filename, text){
+    const blob = new Blob(['\ufeff'+text], {type:'text/plain;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  function copyNegList(){
+    const negs = lastAdsResults.filter(r=>r.action==='neg').map(r=>r.word);
+    if(!negs.length){ alert('当前没有建议否定的词'); return; }
+    navigator.clipboard.writeText(negs.join('\n')).then(()=>alert('已复制 '+negs.length+' 个否定词到剪贴板')).catch(()=>alert('复制失败，请手动复制'));
+  }
+  function downloadNegCsv(){
+    const negs = lastAdsResults.filter(r=>r.action==='neg');
+    if(!negs.length){ alert('当前没有建议否定的词'); return; }
+    let csv = '搜索词,点击,花费,销售额,ACOS,建议\n';
+    negs.forEach(r=>{
+      const acosStr = r.acos===Infinity ? 'inf' : (r.sales>0 ? fmt(r.acos,1) : '0');
+      csv += '"'+r.word.replace(/"/g,'""')+'",'+r.clicks+','+fmt(r.spend)+','+fmt(r.sales)+','+acosStr+'%,建议否定\n';
+    });
+    downloadText('否定词清单.csv', csv);
+  }
+  function downloadReport(){
+    const r = lastAdsResults;
+    const negs = r.filter(x=>x.action==='neg');
+    const totalSpend = r.reduce((a,b)=>a+b.spend,0);
+    const saveTotal = negs.reduce((a,b)=>a+b.spend,0);
+    let md = '# 广告搜索词巡检报告\n\n';
+    md += '- 巡检词数：'+r.length+'\n';
+    md += '- 总花费：$'+fmt(totalSpend)+'\n';
+    md += '- 建议否定：'+negs.length+' 个，可节省约 $'+fmt(saveTotal)+'\n\n';
+    md += '## 建议否定清单\n\n| 搜索词 | 点击 | 花费 | 销售额 | ACOS | 判断依据 |\n|---|---|---|---|---|---|\n';
+    negs.forEach(x=>{
+      md += '| '+x.word+' | '+x.clicks+' | $'+fmt(x.spend)+' | $'+fmt(x.sales)+' | '+(x.acos===Infinity?'∞':(x.sales>0?fmt(x.acos,1)+'%':'—'))+' | '+x.reason+' |\n';
+    });
+    md += '\n> 本报告由「亚马逊卖家助手」本地生成，执行前请人工复核，确认白名单与相关性。\n';
+    downloadText('广告巡检报告.md', md);
+  }
+  function exportSelected(){
+    const list = lastAdsResults.filter(r=>adsSelected.has(r.word));
+    if(!list.length){ alert('请先在表格中勾选要执行的词'); return; }
+    let csv = '搜索词,点击,花费,销售额,ACOS,动作,判断依据\n';
+    let txt = '已确认执行清单（'+list.length+' 项）\n';
+    list.forEach(r=>{
+      const a = ADS_ACTION[r.action];
+      const acosStr = r.acos===Infinity ? 'inf' : (r.sales>0 ? fmt(r.acos,1) : '0');
+      csv += '"'+r.word.replace(/"/g,'""')+'",'+r.clicks+','+fmt(r.spend)+','+fmt(r.sales)+','+acosStr+'%,'+a.label+',"'+r.reason+'"\n';
+      txt += '- ['+a.label+'] '+r.word+'：'+r.reason+'\n';
+    });
+    downloadText('已确认执行清单.csv', csv);
+    navigator.clipboard.writeText(txt).catch(()=>{});
+    alert('已导出 '+list.length+' 项执行清单（CSV 已下载，文本已复制到剪贴板）');
+  }
+
+  // ===== 竞品流量词对比 =====
+  function calcCompare(){
+    const totalA = num('c-total-a'), totalB = num('c-total-b');
+    document.getElementById('c-va').textContent = fmt(totalA,0);
+    document.getElementById('c-vb').textContent = fmt(totalB,0);
+    const ratio = totalA>0 ? (totalB/totalA*100) : 0;
+    document.getElementById('c-ratio').textContent = fmt(ratio,1)+'%';
+
+    const rows = document.getElementById('c-rows').value.split('\n')
+      .map(l=>l.trim()).filter(Boolean)
+      .map(l=>{
+        const p = l.split(/[,，\t]/).map(s=>s.trim());
+        return {word:p[0]||'', shareA:parseFloat(p[1])||0, shareB:parseFloat(p[2])||0};
+      }).filter(r=>r.word);
+
+    let trapCount = 0;
+    const tbody = rows.map(r=>{
+      const absA = totalA * r.shareA/100;
+      const absB = totalB * r.shareB/100;
+      const trap = (r.shareB > r.shareA && absB < absA) || (r.shareA > r.shareB && absA < absB);
+      if(trap) trapCount++;
+      return '<tr'+(trap?' class="trap"':'')+'>'
+        + '<td>'+r.word+(trap?'<span class="tag-trap">口径陷阱</span>':'')+'</td>'
+        + '<td>'+fmt(r.shareA,1)+'%</td><td>'+fmt(r.shareB,1)+'%</td>'
+        + '<td>'+fmt(absA,0)+'</td><td>'+fmt(absB,0)+'</td>'
+        + '</tr>';
+    }).join('');
+
+    document.getElementById('c-table').innerHTML =
+      '<thead><tr><th>关键词</th><th>A 份额</th><th>B 份额</th><th>A 绝对量</th><th>B 绝对量</th></tr></thead><tbody>'+tbody+'</tbody>';
+
+    const f = document.getElementById('f-compare');
+    f.className = 'feedback show ' + (trapCount>0?'warn':'ok');
+    f.innerHTML = trapCount>0
+      ? '⚠ 有 <b>'+trapCount+'</b> 个词出现「份额领先但绝对量落后」——份额高是因为分母（盘子）小。比较前先校准分母与统计口径，再看绝对量。'
+      : '✓ 这些词的份额与绝对量方向一致，未见明显口径陷阱。仍建议核对总盘子数据来源。';
+    document.getElementById('res-compare').classList.add('show');
+  }
+
+  // ===== 利润计算器 =====
+  function calcProfit(){
+    const price=num('p-price'), cost=num('p-cost'), freight=num('p-freight'),
+          fba=num('p-fba'), comm=price*num('p-commission')/100, ad=num('p-ad');
+    const total=cost+freight+fba+comm+ad;
+    const profit=price-total;
+    const margin=price>0?profit/price*100:0;
+    const breakeven=price>0?(cost+freight+fba+ad)/(1-num('p-commission')/100):0;
+    document.getElementById('m-profit').textContent='$'+fmt(profit);
+    document.getElementById('m-profit').className='v '+(profit>0?'good':'bad');
+    document.getElementById('m-margin').textContent=fmt(margin)+'%';
+    document.getElementById('m-margin').className='v '+(margin>=20?'good':(margin>=10?'warn':'bad'));
+    document.getElementById('m-breakeven').textContent='$'+fmt(breakeven);
+    const f=document.getElementById('f-profit');
+    f.className='feedback show '+(profit>0?'ok':'bad');
+    f.innerHTML = profit>0
+      ? '✓ 该产品单件盈利 <b>$'+fmt(profit)+'</b>，毛利率 <b>'+fmt(margin)+'%</b>，'+(margin>=20?'具备不错的利润空间。':'利润空间一般，建议优化成本或提价。')
+      : '✗ 当前测算为亏损，建议重新核算成本或调整售价（盈亏平衡价约 $'+fmt(breakeven)+'）。';
+    document.getElementById('res-profit').classList.add('show');
+  }
+
+  // ===== Listing 优化：完整度自检 + 内置实战手册 =====
+  const CHK_ITEMS = [
+    { id:'title',   w:10, t:'标题 80–200 字符，核心词前置', d:'前 5 个词放主关键词，剩余位置给属性、场景、人群，不堆砌同义词。' },
+    { id:'brand',   w:8,  t:'标题含品牌名 + 产品名 + 关键属性', d:'常见结构：品牌 + 核心词 + 材质/规格 + 卖点，避免全大写和促销词。' },
+    { id:'clean',   w:10, t:'标题无违禁/促销词与特殊符号', d:'best、free、100%、热卖、爆款、emoji、全角符号都容易被抑制或下架。' },
+    { id:'bullets', w:10, t:'五点前 3 条写清核心卖点', d:'手机端只完整展示前 3 条，把最强差异点放最前面，一条只讲一件事。' },
+    { id:'bkw',     w:10, t:'五点自然埋入场景/痛点关键词', d:'用"for 人群/场景"、"solves 痛点"的写法，别照抄标题造成关键词浪费。' },
+    { id:'images',  w:10, t:'主图纯白底 + 至少 6 张副图', d:'副图覆盖场景、尺寸、细节、用法步骤、对比图，移动端也能一眼看懂。' },
+    { id:'video',   w:10, t:'主图视频 30–60 秒', d:'开场 3 秒给出使用场景与核心卖点，完播率会影响点击与转化。' },
+    { id:'aplus',   w:8,  t:'A+ 页面含场景图与对比模块', d:'品牌备案后补齐 A+，用图文讲清"为什么选你"，并做同系列对比导流。' },
+    { id:'st',      w:6,  t:'后台 Search Terms 填满且不重复标题', d:'250 字节内放同义词、拼写变体、西语/场景词，不与标题、品牌重复。' },
+    { id:'variation', w:6, t:'变体合并（颜色/尺寸/套装）', d:'同系列合并共享评论与流量，避免自己和自己竞争。' },
+    { id:'price',   w:6,  t:'定价对齐同类中位价，配 Coupon', d:'新品期用 Coupon/折扣拉转化，价格带偏离中位价太多会掉出比价区间。' },
+    { id:'review',  w:6,  t:'上架 30 天内有评论与 Q&A 运营', d:'前 30 天集中处理差评与问答，评分和回复率直接影响后续广告效率。' },
+  ];
+  const GUIDE_TABS = ['标题写法','五点描述','图片视频','关键词布局','A+ 页面','优化节奏','常见踩坑'];
+  const GUIDE_CONTENT = {
+    '标题写法': '' +
+      '<div class="gd-formula"><b>结构公式：</b>品牌 + 核心关键词 + 关键属性（材质 / 尺寸 / 数量）+ 使用场景或人群 + 核心卖点</div>' +
+      '<div class="gd-code">Anker Insulated Water Bottle 32oz, Stainless Steel, Leak Proof, Keeps Cold 24h, for Gym Travel</div>' +
+      '<div class="gd-code">Brand Silicone Baking Mat Set of 2, Non-Stick, Reusable, Oven Safe up to 480°F, for Pastry &amp; Cookies</div>' +
+      '<h4>写法要点</h4><ul>' +
+      '<li><span class="gd-key">前 5 个词放主关键词</span>：移动端搜索结果只展示标题前 60–70 个字符，核心词埋在中间等于没写。</li>' +
+      '<li><span class="gd-key">一个标题主打一个词根</span>：主词之外用规格、材质、场景词扩展，同一词根不要出现 3 次以上。</li>' +
+      '<li><span class="gd-key">首字母大写</span>，避免全大写单词；不用 emoji 和 <code>! $ ? _ { } ^</code> 等符号。</li>' +
+      '<li><span class="gd-key">不写促销与绝对化词</span>：best、free、100%、sale、#1、hot、cheap 等容易被抑制。</li>' +
+      '<li><span class="gd-key">不写竞品品牌</span>：标题出现他人商标，可能被投诉侵权。</li>' +
+      '<li><span class="gd-key">分站点本地化</span>：UK 用 colour，DE/FR/IT/ES/JP 用当地语言的核心词，不要整条机翻。</li>' +
+      '</ul>' +
+      '<div class="gd-note">长度控制在 80–200 字符。标题不是越长越好，每多一个词都要能回答"买家会不会搜它"。</div>',
+    '五点描述': '' +
+      '<div class="gd-formula"><b>单条结构：</b>大写短语卖点 → 一句解释 → 场景 / 人群 → 证据（材质、尺寸、测试数据）</div>' +
+      '<h4>推荐顺序</h4><ul>' +
+      '<li><b>第 1 条</b>：最强差异点，回答"为什么选你"。</li>' +
+      '<li><b>第 2 条</b>：核心功能 + 关键参数。</li>' +
+      '<li><b>第 3 条</b>：使用场景 / 适用人群。</li>' +
+      '<li><b>第 4 条</b>：材质、尺寸、包装等细节。</li>' +
+      '<li><b>第 5 条</b>：使用提示与售后说明，不写夸大承诺。</li>' +
+      '</ul>' +
+      '<div class="gd-note">移动端默认只完整展示前 3 条，前 3 条决定买家是否继续往下看。</div>' +
+      '<h4>埋词与禁忌</h4><ul>' +
+      '<li>每条自然带入 1–2 个长尾词或场景词，不要照抄标题原句。</li>' +
+      '<li>可以用"问题 → 解决"的问答式写法，AI 搜索（Rufus 等）更容易抓取。</li>' +
+      '<li>不写保证、医疗功效、绝对化用语、竞品对比、外部链接和促销信息。</li>' +
+      '<li>一条只讲一件事，控制在 2–3 行，手机上好读。</li>' +
+      '</ul>',
+    '图片视频': '' +
+      '<h4>7 张图的推荐顺序</h4><ul>' +
+      '<li>① 白底主图：产品占画面 85%，无文字、无水印、无道具。</li>' +
+      '<li>② 场景图：产品在真实使用环境里。</li>' +
+      '<li>③ 尺寸 / 容量图：标注关键尺寸，配参照物。</li>' +
+      '<li>④ 材质细节：特写做工、接口、纹理。</li>' +
+      '<li>⑤ 使用步骤：3 步以内讲清怎么用。</li>' +
+      '<li>⑥ 对比图：本品 vs 普通款，突出差异。</li>' +
+      '<li>⑦ 包装 / 全家福：包含配件，减少"收到不一样"的差评。</li>' +
+      '</ul>' +
+      '<h4>视频</h4><ul>' +
+      '<li>30–60 秒，前 3 秒出现产品和真实使用场景。</li>' +
+      '<li>结构：痛点 → 使用过程 → 效果对比，结尾给一个购买理由。</li>' +
+      '<li>多数买家静音观看，关键信息用大字提示。</li>' +
+      '</ul>' +
+      '<div class="gd-note">副图每张只讲一个信息点；图内文字越少越好，移动端字号不小于画面高度的 4%。</div>',
+    '关键词布局': '' +
+      '<h4>各位置放什么词</h4><ul>' +
+      '<li><b>标题</b>：3–5 个核心词，1 个大词 + 2–4 个精准词。</li>' +
+      '<li><b>五点</b>：场景词、人群词、痛点词、同义词。</li>' +
+      '<li><b>Search Terms</b>：250 字节内放标题没覆盖的同义词、拼写变体、当地语言词，不重复品牌和标题。</li>' +
+      '<li><b>A+ / 图片 alt</b>：属性词和材质词。</li>' +
+      '<li><b>广告</b>：用自动广告和 ASIN 反查跑出的高转化搜索词，反哺标题、五点和 ST。</li>' +
+      '</ul>' +
+      '<h4>每周一次的词循环</h4><ul>' +
+      '<li>下载搜索词报告，标记"高点击高转化"和"高点击零转化"。</li>' +
+      '<li>高转化词：前置到标题或第 1 条五点。</li>' +
+      '<li>零转化词：检查是否词不达意，必要时加否定。</li>' +
+      '<li>新出现的场景词：补进五点和 ST，观察 7 天。</li>' +
+      '</ul>' +
+      '<div class="gd-note">标题、五点、ST 之间不要互相重复；同一词根在标题出现 2 次以上就删掉多余的。</div>',
+    'A+ 页面': '' +
+      '<h4>模块顺序</h4><ul>' +
+      '<li>品牌故事 / 价值主张：3 秒说清"你是谁、凭什么"。</li>' +
+      '<li>核心场景：产品在真实场景中的大图。</li>' +
+      '<li>功能拆解：3–4 个卖点，一图一点。</li>' +
+      '<li>对比表：只对比自家系列，帮买家选型号。</li>' +
+      '<li>同系列推荐：给店铺其他产品导流。</li>' +
+      '</ul>' +
+      '<h4>制作要点</h4><ul>' +
+      '<li>移动端优先：字号 ≥ 14px，图内文字不超过画面 20%。</li>' +
+      '<li>每个模块只讲一个主题，图和文案 1:1 对应。</li>' +
+      '<li>对比表客观，不点名竞品、不用贬低性表述。</li>' +
+      '<li>A+ 主要影响加购率和转化率，点击率还是靠主图和标题。</li>' +
+      '</ul>',
+    '优化节奏': '' +
+      '<h4>改之前先做基线</h4><ul>' +
+      '<li>记录当前会话数、转化率、自然排名前 3 的关键词，截图保存。</li>' +
+      '<li>一次只改一个模块：标题 / 五点 / 图片，不同时动。</li>' +
+      '<li>改完观察 7–14 天，用同一口径对比，不要看一天数据就回滚。</li>' +
+      '</ul>' +
+      '<h4>什么时候改</h4><ul>' +
+      '<li>新品上架前 14 天尽量不动标题，让系统完成词根识别。</li>' +
+      '<li>大促前 2 周完成所有改动，大促期间保持稳定。</li>' +
+      '<li>销量稳定期小步优化；销量下滑先查广告、库存、差评，不要先怪 Listing。</li>' +
+      '<li>标题单次改动不超过 30% 的字符，避免触发重新收录。</li>' +
+      '</ul>' +
+      '<div class="gd-note">Listing 是放大器不是救命药：流量和评价没到位时，改文案的收益有限。</div>',
+    '常见踩坑': '' +
+      '<ul>' +
+      '<li><b>频繁改标题</b>：排名反复波动，权重重新计算。</li>' +
+      '<li><b>关键词堆砌</b>：同一词根重复 3 次以上，可读性下降还可能被抑制。</li>' +
+      '<li><b>标题写促销词 / 违禁词 / 竞品品牌</b>：轻则被抑制，重则下架或侵权投诉。</li>' +
+      '<li><b>主图带文字、水印、非白底</b>：影响点击，也可能不符合类目要求。</li>' +
+      '<li><b>五点写"100% 满意""终身保修"</b>：属于夸大承诺，容易被投诉。</li>' +
+      '<li><b>变体滥用</b>：把不相关产品绑在一起，评论合并后可能被拆。</li>' +
+      '<li><b>只看文案不看广告和评论</b>：转化差可能是流量不准或差评劝退。</li>' +
+      '<li><b>忽略移动端</b>：标题前 60 字符、五点前 3 条、图片文字大小，才是买家真实看到的。</li>' +
+      '</ul>',
+  };
+
+  function initListingTools(){
+    const box = document.getElementById('chk-list');
+    if(box && !box.children.length){
+      renderChecklist();
+      document.getElementById('chk-result').classList.add('show');
+    }
+    const bl = document.getElementById('b-lines');
+    if(bl && !bl.value.trim()){
+      bl.value = BULLET_DEMO;
+      calcBullets();
+    }
+    const panel = document.getElementById('gd-panel');
+    if(panel && !panel.children.length){
+      renderGuideTabs();
+      switchGuide(GUIDE_TABS[0]);
+    }
+  }
+
+  function renderChecklist(){
+    const box = document.getElementById('chk-list');
+    box.innerHTML = CHK_ITEMS.map(it =>
+      '<label class="chk-item" id="chk-' + it.id + '">' +
+        '<input type="checkbox" onchange="calcChecklist()">' +
+        '<span class="cw-body">' +
+          '<span class="ct">' + esc(it.t) + '<span class="cw">' + it.w + '分</span></span>' +
+          '<span class="cd">' + esc(it.d) + '</span>' +
+        '</span>' +
+      '</label>'
+    ).join('');
+    calcChecklist();
+  }
+
+  function calcChecklist(){
+    let score = 0;
+    const miss = [];
+    CHK_ITEMS.forEach(it => {
+      const el = document.getElementById('chk-' + it.id);
+      if(!el) return;
+      const on = el.querySelector('input').checked;
+      el.classList.toggle('on', on);
+      if(on) score += it.w; else miss.push(it.t);
+    });
+    document.getElementById('chk-score').textContent = score;
+    document.getElementById('chk-bar').style.width = score + '%';
+    let verdict;
+    if(score >= 90) verdict = '结构基本完整，可以进广告放量测试。';
+    else if(score >= 70) verdict = '大部分到位，补齐剩余项能明显减少转化损耗。';
+    else if(score >= 40) verdict = '还有明显缺口，建议先补高权重项再开广告。';
+    else verdict = '基础偏薄弱，优先补标题、五点、图片这三块。';
+    document.getElementById('chk-verdict').textContent = verdict;
+    const m = document.getElementById('chk-miss');
+    if(miss.length){
+      m.className = 'feedback show warn';
+      m.innerHTML = '<b>还差 ' + miss.length + ' 项：</b>' + miss.map(esc).join(' · ');
+    }else{
+      m.className = 'feedback';
+      m.innerHTML = '';
+    }
+  }
+
+  function resetChecklist(){
+    document.querySelectorAll('#chk-list input').forEach(i => { i.checked = false; });
+    calcChecklist();
+  }
+
+  function renderGuideTabs(){
+    document.getElementById('gd-tabs').innerHTML = GUIDE_TABS.map(t =>
+      '<span class="chip" data-t="' + esc(t) + '" onclick="switchGuide(this.dataset.t)">' + esc(t) + '</span>'
+    ).join('');
+  }
+
+  function switchGuide(t){
+    document.querySelectorAll('#gd-tabs .chip').forEach(c => c.classList.toggle('active', c.dataset.t === t));
+    document.getElementById('gd-panel').innerHTML = GUIDE_CONTENT[t] || '';
+  }
+
+  // ===== 标题关键词 =====
+  // 标题体检：违禁 / 促销 / 绝对化词（只用词组，避免 BPA Free、100% Cotton、hot water bottle 误报）
+  const TITLE_BAD_WORDS = ['best','bestseller','#1','no.1','free shipping','free gift','sale','hot item','hot selling','cheap','guarantee','guaranteed','100% satisfaction','money back','discount','promotion','deal'];
+  const TITLE_BAD_CHAR_RE = /[!$?_^{}~|*<>@#%]/;
+  const TITLE_EMOJI_RE = /[\u2600-\u27BF\u{1F000}-\u{1FAFF}]/u;
+
+  function hitBadWords(lower){
+    return TITLE_BAD_WORDS.filter(w => {
+      const escW = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp('(^|[^a-z0-9])' + escW + '([^a-z0-9]|$)', 'i').test(lower);
+    });
+  }
+
+  function calcKeyword(){
+    const title=document.getElementById('k-title').value.trim();
+    const tokens=title.split(/\s+/).filter(Boolean);
+    const chars=title.length, words=tokens.length;
+    document.getElementById('k-chars').textContent=chars;
+    document.getElementById('k-words').textContent=words;
+    document.getElementById('k-limit').textContent='200';
+
+    let score=100;
+    const issues=[];
+    if(chars>200){ score-=25; issues.push('字符数 '+chars+' 超出 200（多数类目上限，移动端会被截断）'); }
+    if(chars<80){ score-=10; issues.push('标题偏短（'+chars+' 字符），材质/尺寸/场景没写全'); }
+
+    const bad=hitBadWords(title.toLowerCase());
+    if(bad.length){ score-=Math.min(30, bad.length*10); issues.push('含促销/绝对化词：'+bad.join('、')); }
+    if(TITLE_BAD_CHAR_RE.test(title)||TITLE_EMOJI_RE.test(title)){ score-=10; issues.push('含特殊符号或 emoji，建议只保留逗号、连字符、斜杠'); }
+
+    if(words>0){
+      const seen={}, dup=[];
+      tokens.forEach(w=>{
+        const k=w.toLowerCase().replace(/[^a-z0-9]/g,'');
+        if(!k) return;
+        seen[k]=(seen[k]||0)+1;
+        if(seen[k]>1 && !dup.includes(k)) dup.push(k);
+      });
+      if(dup.length){ score-=Math.min(15, dup.length*5); issues.push('重复词：'+dup.join('、')); }
+      if(chars>=80 && words<8){ score-=10; issues.push('单词数偏少（'+words+'），建议补充关键属性'); }
+    }
+    if(score<0) score=0;
+
+    const sv=document.getElementById('k-score');
+    sv.textContent=score;
+    sv.className='v '+(score>=85?'good':(score>=60?'warn':'bad'));
+
+    const f=document.getElementById('f-keyword');
+    if(issues.length){
+      f.className='feedback show warn';
+      f.innerHTML='⚠ '+issues.join('；')+'。<br><span style="color:var(--muted)">建议：先删重复词和促销词，再把材质、尺寸、场景补到标题前半段。</span>';
+    }else{
+      f.className='feedback show ok';
+      f.innerHTML='✓ 长度、用词和关键词分布都符合常见规范，可以进入图片与五点的优化。';
+    }
+    document.getElementById('res-keyword').classList.add('show');
+  }
+
+  // ===== 五点描述体检 =====
+  const BULLET_DEMO = [
+    'KEEPS DRINKS COLD 24 HOURS: Double-wall vacuum insulation keeps drinks cold for 24 hours and hot for 12 hours, great for all-day use.',
+    'LEAK PROOF SCREW LID: Silicone seal and screw-on cap prevent spills in backpacks, gym bags and car cup holders.',
+    'FITS MOST CUP HOLDERS: Slim 32oz base fits standard car cup holders, ideal for commuting, travel and office.',
+    'FOOD-GRADE STAINLESS STEEL: 18/8 stainless steel with BPA free liner, no metallic taste and easy to rinse.',
+    'WIDE MOUTH FOR EASY CLEANING: Wide opening accepts ice cubes and a cleaning brush, hand wash recommended.',
+  ].join('\n');
+  const BULLET_STOP = new Set(['with','that','this','from','your','have','will','into','most','more','than','when','what','where','which','their','them','they','been','also','make','made','keep','keeps','great','ideal','perfect','designed','suitable','easy','using','use','for','and','the','our','you','not','are','can','all','its','has','how','who','why','hours','hour']);
+
+  function fillBulletDemo(){
+    document.getElementById('b-lines').value = BULLET_DEMO;
+  }
+
+  function parseBulletLines(v){
+    return String(v).split(/\n+/)
+      .map(l => l.replace(/^\s*(?:\d+[.)、]|[-•*])\s*/, '').trim())
+      .filter(Boolean);
+  }
+
+  function bulletSceneRe(){ return /\b(for|ideal for|perfect for|great for|designed for|suitable for|who)\b/i; }
+  function bulletProofRe(){ return /(\d+(\.\d+)?\s*(oz|ml|l|inch|in|cm|ft|lb|g|kg|hours?|hrs?|days?|°f|°c|%))|\b(stainless steel|silicone|bpa[- ]free|abs|nylon|leather|cotton|bamboo|aluminum)\b/i; }
+
+  function calcBullets(){
+    const lines = parseBulletLines(document.getElementById('b-lines').value);
+    const f = document.getElementById('f-bullets');
+    const detail = document.getElementById('b-detail');
+    const scoreEl = document.getElementById('b-score');
+
+    document.getElementById('b-count').textContent = lines.length;
+    if(!lines.length){
+      scoreEl.textContent = '—';
+      scoreEl.className = 'v';
+      document.getElementById('b-words').textContent = '—';
+      document.getElementById('b-avg').textContent = '—';
+      detail.innerHTML = '';
+      f.className = 'feedback show warn';
+      f.innerHTML = '⚠ 请先粘贴五点描述，一行一条，共 5 条。';
+      document.getElementById('res-bullets').classList.add('show');
+      return;
+    }
+
+    const lengths = lines.map(l => l.split(/\s+/).filter(Boolean).length);
+    const totalWords = lengths.reduce((a,b)=>a+b,0);
+    document.getElementById('b-words').textContent = totalWords;
+    document.getElementById('b-avg').textContent = (totalWords / lines.length).toFixed(1);
+
+    let score = 0;
+    const issues = [];
+
+    if(lines.length === 5) score += 20;
+    else {
+      score += (lines.length >= 4 && lines.length <= 6) ? 12 : 5;
+      issues.push('当前 '+lines.length+' 条，标准是 5 条');
+    }
+
+    const badLen = lines.filter((l,i) => lengths[i] < 8 || lengths[i] > 35).length;
+    score += Math.max(0, 20 - badLen * 4);
+    if(badLen) issues.push(badLen+' 条长度不在 8–35 词（太短信息不足，太长手机端难读）');
+
+    const capOK = lines.filter(l => /^[A-Z0-9]/.test(l)).length;
+    score += Math.round(capOK / lines.length * 10);
+    if(capOK < lines.length) issues.push((lines.length - capOK)+' 条没有用大写短语开头');
+
+    if(lines.some(l => bulletSceneRe().test(l))) score += 15;
+    else issues.push('没有场景/人群词（for travel、great for gym、ideal for office）');
+
+    if(lines.some(l => bulletProofRe().test(l))) score += 10;
+    else issues.push('缺少数字或材质证据（容量、尺寸、时长、材质）');
+
+    const bad = hitBadWords(lines.join(' ').toLowerCase());
+    if(bad.length) issues.push('含促销/绝对化词：'+bad.join('、'));
+    else score += 10;
+
+    const titleWords = [...new Set((document.getElementById('k-title').value.toLowerCase().match(/[a-z0-9]+/g) || [])
+      .filter(w => w.length > 3 && !BULLET_STOP.has(w)))];
+    const bulletWords = new Set((lines.join(' ').toLowerCase().match(/[a-z0-9]+/g) || [])
+      .filter(w => w.length > 3 && !BULLET_STOP.has(w)));
+    if(!titleWords.length){
+      score += 8;
+      issues.push('标题输入框为空，无法检查与标题的重复度');
+    }else{
+      const overlap = titleWords.filter(w => bulletWords.has(w)).length / titleWords.length;
+      if(overlap <= 0.75) score += 15;
+      else if(overlap <= 0.9){ score += 8; issues.push('与标题用词重合度 '+Math.round(overlap*100)+'%，建议补充场景和长尾需求'); }
+      else issues.push('五点在重复标题的词，几乎没有新增信息');
+    }
+
+    scoreEl.textContent = score;
+    scoreEl.className = 'v ' + (score >= 85 ? 'good' : (score >= 60 ? 'warn' : 'bad'));
+
+    detail.innerHTML = lines.map((l, i) => {
+      const w = lengths[i];
+      const tags = [];
+      tags.push('<span class="bl-tag '+(w>=8&&w<=35?'ok':'bad')+'">'+w+' 词</span>');
+      tags.push(/^[A-Z0-9]/.test(l) ? '<span class="bl-tag ok">首词大写</span>' : '<span class="bl-tag bad">开头建议大写短语</span>');
+      if(bulletSceneRe().test(l)) tags.push('<span class="bl-tag ok">场景/人群</span>');
+      if(bulletProofRe().test(l)) tags.push('<span class="bl-tag ok">参数/材质</span>');
+      return '<div class="bl-item"><span class="bl-idx">'+(i+1)+'</span><div class="bl-body">'+esc(l)+'<div class="bl-tags">'+tags.join('')+'</div></div></div>';
+    }).join('');
+
+    if(score >= 85){
+      f.className = 'feedback show ok';
+      f.innerHTML = '✓ 五点结构完整，前 3 条放最强卖点，可以配合图片和 A+ 放量。';
+    }else{
+      f.className = 'feedback show warn';
+      f.innerHTML = '⚠ '+issues.join('；')+'。<br><span style="color:var(--muted)">建议：每条用"大写卖点 + 一句解释 + 场景/参数"，前 3 条最重要。</span>';
+    }
+    document.getElementById('res-bullets').classList.add('show');
+  }
+
+  // ===== 关键词反查 + 覆盖检查 =====
+  let kwData = [];
+  let kwFilter = 'all';
+  const KW_INTENT_CN = { Purchase:'购买', Comparison:'对比', FAQ:'问答', Informational:'了解' };
+
+  function kwTextSet(s){
+    return new Set(String(s || '').toLowerCase().match(/[a-z0-9]+/g) || []);
+  }
+
+  function kwCovered(set, text){
+    const toks = String(text || '').toLowerCase().match(/[a-z0-9]+/g) || [];
+    return toks.length > 0 && toks.every(t => set.has(t));
+  }
+
+  function kwRowsPrepared(){
+    const titleSet = kwTextSet(document.getElementById('k-title').value);
+    const bulletSet = kwTextSet(document.getElementById('b-lines').value);
+    return kwData.map(k => {
+      const inT = kwCovered(titleSet, k.text);
+      const inB = kwCovered(bulletSet, k.text);
+      return Object.assign({}, k, {
+        inT, inB, covered: inT || inB,
+        words: (k.text.match(/[a-z0-9]+/gi) || []).length,
+      });
+    });
+  }
+
+  function renderKwFilters(){
+    const rows = kwRowsPrepared();
+    const counts = {
+      all: rows.length,
+      miss: rows.filter(r => !r.covered).length,
+      title: rows.filter(r => r.inT).length,
+      bullets: rows.filter(r => r.inB).length,
+      q: rows.filter(r => r.isQuestion).length,
+    };
+    document.getElementById('kws-total').textContent = counts.all;
+    document.getElementById('kw-covered').textContent = rows.filter(r => r.covered).length;
+    document.getElementById('kw-miss').textContent = counts.miss;
+    document.getElementById('kw-q').textContent = counts.q;
+    const items = [['all','全部'],['miss','未覆盖'],['title','标题覆盖'],['bullets','五点覆盖'],['q','问句']];
+    document.getElementById('kw-filters').innerHTML = items.map(it =>
+      '<span class="chip' + (kwFilter === it[0] ? ' active' : '') + '" onclick="setKwFilter(\'' + it[0] + '\')">' + it[1] + ' ' + counts[it[0]] + '</span>'
+    ).join('');
+  }
+
+  function setKwFilter(f){
+    kwFilter = f;
+    renderKwFilters();
+    renderKwTable();
+  }
+
+  function renderKwTable(){
+    let list = kwRowsPrepared();
+    if(kwFilter === 'miss') list = list.filter(r => !r.covered);
+    else if(kwFilter === 'title') list = list.filter(r => r.inT);
+    else if(kwFilter === 'bullets') list = list.filter(r => r.inB);
+    else if(kwFilter === 'q') list = list.filter(r => r.isQuestion);
+
+    const sort = document.getElementById('kw-sort').value;
+    if(sort === 'miss') list.sort((a,b) => (a.covered === b.covered ? 0 : (a.covered ? 1 : -1)) || a.text.localeCompare(b.text));
+    else if(sort === 'len') list.sort((a,b) => b.words - a.words || a.text.localeCompare(b.text));
+    else list.sort((a,b) => a.text.localeCompare(b.text));
+
+    document.getElementById('kw-rows').innerHTML = list.slice(0, 600).map(r =>
+      '<tr>' +
+        '<td class="kw-txt">' +
+          (r.isQuestion ? '<span class="kw-badge ' + (r.qtype === 'sentence' ? 'q' : 'p') + '">' + (r.qtype === 'sentence' ? '问' : '短') + '</span>' : '') +
+          esc(r.text) +
+        '</td>' +
+        '<td>' + (r.isQuestion ? (r.qtype === 'sentence' ? '完整问句' : '意图短语') : '关键词') + '</td>' +
+        '<td>' + esc(KW_INTENT_CN[r.intent] || r.intent || '—') + '</td>' +
+        '<td>' + esc(r.core || '—') + '</td>' +
+        '<td class="' + (r.inT ? 'kw-yes' : 'kw-no') + '">' + (r.inT ? '✓' : '—') + '</td>' +
+        '<td class="' + (r.inB ? 'kw-yes' : 'kw-no') + '">' + (r.inB ? '✓' : '—') + '</td>' +
+        '<td>' + r.words + '</td>' +
+      '</tr>'
+    ).join('') || '<tr><td colspan="7" style="padding:16px;color:var(--muted)">当前筛选下没有关键词</td></tr>';
+  }
+
+  async function loadAsinKeywords(){
+    const asin = document.getElementById('kw-asin').value.trim().toUpperCase();
+    const seeds = document.getElementById('kw-seeds').value.trim();
+    const mkt = document.getElementById('kw-mkt').value;
+    const status = document.getElementById('kw-status');
+    const btn = document.getElementById('kw-btn');
+    if(!/^[A-Z0-9]{10}$/.test(asin) && !seeds){
+      status.textContent = '⚠ 请输入 10 位 ASIN，或直接填入种子词。';
+      return;
+    }
+    btn.disabled = true;
+    const oldText = btn.textContent;
+    btn.textContent = '抓取中…';
+    status.textContent = '正在解析 ASIN 并抓取亚马逊真实搜索词，首次约需 15–30 秒…';
+    document.getElementById('res-kw').classList.remove('show');
+    try{
+      const qs = new URLSearchParams({ marketplace: mkt, limit: '20' });
+      if(asin) qs.set('asin', asin);
+      if(seeds) qs.set('seeds', seeds);
+      const r = await fetch('/api/listing/keywords?' + qs.toString());
+      const d = await r.json();
+      if(!d.ok){
+        status.textContent = '⚠ ' + (d.error || '反查失败，请稍后重试');
+        return;
+      }
+      kwData = d.keywords || [];
+      kwFilter = 'all';
+      const box = document.getElementById('kw-product');
+      box.style.display = 'block';
+      if(d.product){
+        box.innerHTML = '<b>' + esc(d.product.title) + '</b>' +
+          (d.product.brand ? ' · 品牌 ' + esc(d.product.brand) : '') +
+          (d.product.stars ? ' · ' + d.product.stars + ' 星' : '') +
+          (d.product.reviews ? ' · ' + d.product.reviews + ' 评论' : '') +
+          '<br>种子词：' + d.seeds.map(esc).join(' / ') + ' · 请求 ' + (d.requests || 0) + ' 次';
+      }else{
+        box.innerHTML = '种子词：' + d.seeds.map(esc).join(' / ') + ' · 请求 ' + (d.requests || 0) + ' 次';
+      }
+      status.textContent = '共 ' + kwData.length + ' 个真实搜索词，已按当前标题与五点计算覆盖情况。';
+      renderKwFilters();
+      renderKwTable();
+      document.getElementById('res-kw').classList.add('show');
+      logActivity('关键词反查', (asin ? 'ASIN ' + asin : '种子词 ' + seeds) + ' · ' + kwData.length + ' 个真实词', 'keyword');
+    }catch(e){
+      status.textContent = '⚠ 反查失败：' + e.message;
+    }finally{
+      btn.disabled = false;
+      btn.textContent = oldText;
+    }
+  }
+
+  function copyMissKeywords(){
+    const miss = kwRowsPrepared().filter(r => !r.covered).map(r => r.text);
+    const status = document.getElementById('kw-status');
+    if(!miss.length){
+      status.textContent = '没有未覆盖的关键词，标题和五点已经覆盖全部抓取词。';
+      return;
+    }
+    const text = miss.join('\n');
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(() => {
+        status.textContent = '已复制 ' + miss.length + ' 个未覆盖词，可补进五点或 Search Terms。';
+      }).catch(() => { status.textContent = '复制失败，请手动选择表格内容。'; });
+    }else{
+      status.textContent = '当前浏览器不支持一键复制，请手动选择表格内容。';
+    }
+  }
+
+  // ===== 选品评分 =====
+  function calcProduct(){
+    const sales=num('s-sales'), comp=num('s-comp'), profit=num('s-profit'),
+          price=num('s-price'), review=num('s-review'), diff=num('s-diff');
+    let score=0;
+    const c=[];
+    score += Math.min(25, sales/1000*25); c.push(['月销量 '+sales, Math.min(25,sales/1000*25).toFixed(1)+' / 25']);
+    const compS = Math.max(0, 20-(comp-1)*2.2); score+=compS; c.push(['竞争度 '+comp+'/10', compS.toFixed(1)+' / 20']);
+    const profitS = Math.min(20, profit/15*20); score+=profitS; c.push(['毛利 $'+profit, profitS.toFixed(1)+' / 20']);
+    const priceS = price>=15&&price<=40?15:(price>=10&&price<=60?10:5); score+=priceS; c.push(['客单价 $'+price, priceS+' / 15']);
+    const revS = review<200?20:(review<800?14:(review<3000?8:4)); score+=revS; c.push(['评论壁垒 '+review, revS+' / 20']);
+    const diffS = diff*1.5; score+=diffS; c.push(['差异化空间 '+diff+'/10', diffS.toFixed(1)+' / 15']);
+    score=Math.round(Math.min(100,score));
+    const el=document.getElementById('s-score');
+    el.textContent=score;
+    el.style.color = score>=75?'var(--green)':(score>=50?'var(--amazon-dark)':'var(--red)');
+    document.getElementById('s-verdict').textContent = score>=75?'优质选品，值得深入调研':(score>=50?'中等潜力，谨慎评估':'风险较高，建议暂缓');
+    document.getElementById('s-bar').style.width=score+'%';
+    const list=document.getElementById('s-criteria');
+    list.innerHTML=c.map(x=>'<li><span>'+x[0]+'</span><b>'+x[1]+'</b></li>').join('');
+    document.getElementById('res-product').classList.add('show');
+  }
+
+  // ===== BSR =====
+  function calcBsr(){
+    const coef=parseFloat(document.getElementById('b-cat').value);
+    const rank=num('b-rank');
+    const daily=Math.max(1, Math.round(100000/Math.pow(rank,coef)));
+    document.getElementById('b-daily').textContent=daily+' 件';
+    document.getElementById('b-monthly').textContent=(daily*30)+' 件';
+    document.getElementById('b-coef').textContent=coef.toFixed(2);
+    document.getElementById('res-bsr').classList.add('show');
+  }
+
+  // ===== 词海广告搭建 =====
+  const WS_STAGE = {
+    cold:{name:'冷启动（0~3 个月）', sea:80, funnel:20, seaWords:'L2 / L3 / 问句', funnelWords:'高搜长尾词',
+      tip:'新品评论少、转化弱，词海占大头（80%）先把词库做起来、测转化；漏斗只打「高搜索量 + 长尾」双条件词，切勿上来砸核心泛词（ACOS 会爆）。'},
+    growth:{name:'成长期（3~12 个月）', sea:65, funnel:35, seaWords:'L3 / L4 / 问句', funnelWords:'高搜一级词',
+      tip:'此阶段词海放大好词、压 ACOS；漏斗加入高搜一级词冲自然排名。两套流量并行独立，冲排名时不要关词海。'},
+    mature:{name:'成熟期（BSR 稳定）', sea:50, funnel:50, seaWords:'持续匹配对话流量', funnelWords:'核心泛词',
+      tip:'成熟期词海 / 漏斗对半，但广告在总单量中的占比要逐步下调（约 50% → 30%），让位自然流量，盯 TACoS 而非只看 ACOS。'}
+  };
+  let wsData = null;
+
+  function wsSplit(v){ return v.split(/[\n,，、\t]/).map(s=>s.trim().toLowerCase()).filter(Boolean); }
+  function wsUniq(arr){ return [...new Set(arr)]; }
+  function wsChips(words, max){
+    if(!words.length) return '<span class="empty-hint">（无）</span>';
+    const shown = words.slice(0, max);
+    let html = shown.map(w=>'<span class="kw-chip">'+esc(w)+'</span>').join('');
+    if(words.length > max) html += '<span class="empty-hint">…等 '+words.length+' 词</span>';
+    return '<div class="kw-chips">'+html+'</div>';
+  }
+
+  function buildWordSea(silent){
+    const products = wsUniq(wsSplit(document.getElementById('ws-product').value));
+    const material = wsUniq(wsSplit(document.getElementById('ws-material').value));
+    const scene = wsUniq(wsSplit(document.getElementById('ws-scene').value));
+    const people = wsUniq(wsSplit(document.getElementById('ws-people').value));
+    const pain = wsUniq(wsSplit(document.getElementById('ws-pain').value));
+    const cpc = num('ws-cpc');
+    const stage = document.getElementById('ws-stage').value;
+
+    if(!products.length){ alert('请先填写产品词根'); return; }
+
+    // —— 五级词库生成 ——
+    const L0 = products.slice(0, 6);                                   // 核心泛词（无属性）
+    const L1 = wsUniq(products.flatMap(p=> [...material].map(a=> p+' '+a)));           // 1 属性
+    const L2 = wsUniq(products.flatMap(p=> scene.flatMap(sc=> people.map(pp=> p+' '+sc+' '+pp))));  // 场景+人群
+    const L3 = wsUniq(products.flatMap(p=> scene.flatMap(sc=> people.flatMap(pp=> pain.map(pn=> p+' '+sc+' '+pp+' '+pn))))); // 多属性
+    // 口语问句（L4）
+    const Q = [];
+    products.forEach(p=>{
+      scene.slice(0,2).forEach(sc=> Q.push('best '+p+' '+sc));
+      scene.slice(0,2).forEach(sc=> Q.push('what '+p+' can i use '+sc));
+      people.slice(0,2).forEach(pp=> Q.push('which '+p+' is best '+pp));
+      pain.slice(0,2).forEach(pn=> Q.push(p+' that is '+pn));
+    });
+    const L4 = wsUniq(Q);
+
+    // —— 预算配比 ——
+    const st = WS_STAGE[stage] || WS_STAGE.growth;
+    document.getElementById('ws-stage-name').textContent = st.name;
+    document.getElementById('ws-sea').textContent = st.sea + '%';
+    document.getElementById('ws-funnel').textContent = st.funnel + '%';
+    document.getElementById('ws-sea-words').textContent = st.seaWords;
+    document.getElementById('ws-funnel-words').textContent = st.funnelWords;
+    const tip = document.getElementById('ws-budget-tip');
+    tip.className = 'feedback show ok';
+    tip.textContent = st.tip;
+
+    // —— 五级词库渲染 ——
+    const lvls = [
+      {l:0, name:'核心泛词（无属性）', desc:'竞争极大、流量被 AI 分流，不做词海主力，做否定', words:L0},
+      {l:1, name:'一级词根（1 个属性）', desc:'带基础材质/规格，中期谨慎，词组/精准', words:L1},
+      {l:2, name:'二级词根（场景+人群）', desc:'Alexa 对话核心主力，词海从这里起投', words:L2},
+      {l:3, name:'多级复合词根（3+ 属性）', desc:'超长精准长尾，竞争小、转化高、CPC 极低，词海主力', words:L3},
+      {l:4, name:'口语问句（Alexa 原生）', desc:'AI 专属流量，匹配度最高，词海必投 + QA/详情埋词', words:L4}
+    ];
+    document.getElementById('ws-lvls').innerHTML = lvls.map(x=>
+      '<div class="lvl-row"><div class="lvl-head"><span class="lvl-badge lvl-'+x.l+'">L'+x.l+'</span><span class="lvl-name">'+x.name+'</span><span class="lvl-desc">'+x.desc+'</span></div>'+wsChips(x.words, 10)+'</div>'
+    ).join('');
+
+    // —— 词根组合与问句 ——
+    document.getElementById('ws-questions').innerHTML =
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">L2 场景人群组合</div>' + wsChips(L2, 16) +
+      '<div style="font-size:12px;color:var(--muted);margin:12px 0 8px">L3 多属性组合</div>' + wsChips(L3, 16) +
+      '<div style="font-size:12px;color:var(--muted);margin:12px 0 8px">L4 口语问句</div>' + wsChips(L4, 20);
+
+    // —— 广告架构 ——
+    const bidLow = (cpc*0.3).toFixed(2), bidHigh = (cpc*0.5).toFixed(2);
+    const arch = [
+      '<b>一词一活动</b>：每个 prompt 单独一个 campaign，独立预算、独立竞价。绝不要把几百词塞一个活动（会变捡漏广告，数据互相污染）。',
+      '<b>匹配方式</b>：广泛 / 词组为主，<b style="color:var(--red)">绝对不开精准</b>——精准无法识别 AI 口语化、碎片化语义。',
+      '<b>出价</b>：类目平均 CPC 的 30%~50% 低位起步（本次建议 <b>$'+bidLow+' ~ $'+bidHigh+'</b>），靠词量取胜，不靠单条抢曝光。',
+      '<b>竞价模式</b>：动态竞价「提高和降低」，容易跑出数据。',
+      '<b>开受众 Audience / AMC</b>：锁定 AI 推荐人群，避免乱跑搜索页位置。',
+      '<b>不打 TOS / ROS</b>：不加位置百分比——词海打的是人群与对话框推荐位，不抢搜索页排名位置。',
+      '<b>前置否定</b>：核心泛词、无关类目、纯知识查询（how to fix 等）先否掉，跑出的词才高度相关。',
+      '<b>分批节奏</b>：新手从 100 个广告起步，跑出数据再开下一批；目标 1000 个广告时每天约 10% 出单、90% 不花钱即达标。'
+    ];
+    document.getElementById('ws-arch').innerHTML = arch.map(a=>'<li>'+a+'</li>').join('');
+
+    // —— 否定词库 ——
+    const fixedNeg = ['used','free','cheap','repair','parts','sample','replacement','diy','how to','near me','for sale','second hand','discount','coupon'];
+    const negAll = wsUniq([...fixedNeg, ...L0, ...L1]);
+    document.getElementById('ws-neg').innerHTML =
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">固定泛词 + L0/L1 泛词（词海从 L2 起投，L0/L1 需否定避免占预算）</div>' +
+      wsChips(negAll, 24);
+
+    // —— SPV ——
+    const spv = [
+      '<b>依附 SP</b>：在 SP 自动/广泛/词组/精准广告里直接上传视频，一个 ASIN 最多 5 条。',
+      '<b>单主题对应词根</b>：场景类、痛点解决、尺寸适配、对比细节各做一条，系统自动匹配搜索意图。',
+      '<b>规格</b>：7~30 秒、16:9、前 3 秒直击卖点、商品画面占比 &gt; 50%。',
+      '<b>标题植入</b>：视频标题里植入词海高频词根。',
+      '<b>预期</b>：CTR/CVR 比图文高 20~40%，是词海转化放大器，不能替代 SP 拓词。'
+    ];
+    document.getElementById('ws-spv').innerHTML = spv.map(s=>'<div style="padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px;line-height:1.55">'+s+'</div>').join('');
+
+    // —— 执行清单 ——
+    const checklist = [
+      ['词源', '已用 Alexa 导购洞察抓取类目真实提示词（不是 ABA / ASIN 反查 / AI 洗词）'],
+      ['词源', '词库里包含自然问句、对比提问、场景描述三种形态，不只是词组'],
+      ['词源', '投放前已用 AI 校验过语义匹配'],
+      ['分层', '已按 L0~L4 五级分层，词海从 L2 起投，L0/L1 泛词已加入否定'],
+      ['埋词', '标题 / 五点 / A+ / SearchTerm / QA 已做场景化、问答式改写（不是堆词）'],
+      ['埋词', 'QA 已埋用户问句，答案带参数、场景、对比信息（不是 yes/no）'],
+      ['埋词', '评论 ≥2 条真实好评、评分 4.7+，每条紧扣一个核心卖点'],
+      ['埋词', '产品参数与对比信息已补齐，方便 AI 横向推荐'],
+      ['架构', '一词一活动，独立预算、独立竞价，没有共用'],
+      ['架构', '匹配方式为广泛/词组，未开精准'],
+      ['架构', '竞价 = 类目平均 CPC 的 30%~50%，未设 TOS/ROS 百分比'],
+      ['架构', '已开受众 Audience / AMC / SPV，未抢搜索页位置'],
+      ['架构', '前置否定已加载（大词/无关类目/知识查询）'],
+      ['迭代', '每周拉搜索词报告：高转化放大、弱相关否定、补新词根'],
+      ['迭代', '双周校验否词库，误否的有自然单立刻解除'],
+      ['迭代', '已明确：3 万词是「触发词」数量，不是后台投放词数量']
+    ];
+    document.getElementById('ws-checklist').innerHTML = checklist.map(c=>
+      '<li><input type="checkbox"><span>'+esc(c[1])+'</span></li>'
+    ).join('');
+
+    // 缓存导出数据
+    wsData = {products, material, scene, people, pain, cpc, stage, L0,L1,L2,L3,L4, negAll, bidLow, bidHigh, arch, spv, checklist};
+
+    document.getElementById('res-wordsea').classList.add('show');
+    if (!silent) logActivity('词海方案', products.slice(0, 2).join(' / ') + ' · L2-L4 ' + (L2.length + L3.length + L4.length) + ' 个投放词', 'alexa');
+  }
+
+  function exportWordSea(){
+    if(!wsData){ alert('请先生成搭建方案'); return; }
+    const d = wsData;
+    const st = WS_STAGE[d.stage] || WS_STAGE.growth;
+    let t = '词海广告搭建方案\n';
+    t += '========================================\n\n';
+    t += '产品词根：' + d.products.join(', ') + '\n';
+    t += '类目平均 CPC：$' + fmt(d.cpc) + '\n';
+    t += '所处阶段：' + st.name + '\n\n';
+    t += '【预算配比】词海 ' + st.sea + '% ｜ 漏斗 ' + st.funnel + '%\n';
+    t += '词海投词层：' + st.seaWords + '；漏斗投词层：' + st.funnelWords + '\n';
+    t += st.tip + '\n\n';
+
+    t += '【五级词库】\n';
+    [['L0 核心泛词', d.L0], ['L1 一级词根', d.L1], ['L2 二级词根', d.L2], ['L3 多级复合', d.L3], ['L4 口语问句', d.L4]].forEach(x=>{
+      t += x[0] + ' (' + x[1].length + ' 词)\n  ' + x[1].join('\n  ') + '\n';
+    });
+    t += '\n【广告架构】\n';
+    d.arch.forEach((a,i)=>{ t += (i+1) + '. ' + a.replace(/<[^>]+>/g,'') + '\n'; });
+    t += '\n【前置否定词库】(' + d.negAll.length + ' 词)\n' + d.negAll.join('\n') + '\n\n';
+    t += '【SPV 视频】\n';
+    d.spv.forEach(s=>{ t += '- ' + s.replace(/<[^>]+>/g,'') + '\n'; });
+    t += '\n【执行自查清单】\n';
+    d.checklist.forEach(c=>{ t += '[ ] ' + c[1] + '\n'; });
+    t += '\n说明：词海打的是 Alexa/Rufus 对话框里的提示词（词根组合 + 口语问句），一词一活动、广泛/词组、开受众，不抢搜索页排名。';
+    downloadText('词海广告搭建方案.txt', t);
+  }
+
+  function resetWordSea(){
+    ['ws-product','ws-material','ws-scene','ws-people','ws-pain'].forEach(id=>{
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('ws-cpc').value = '0.80';
+    document.getElementById('ws-stage').value = 'growth';
+    wsData = null;
+    const info = document.getElementById('ws-autofill-info');
+    info.className = 'ws-autofill';
+    info.textContent = '抓取真实搜索词后，这里会自动填入从 ASIN / 关键词中提取的词根；也可以直接手动修改。';
+    document.getElementById('res-wordsea').classList.remove('show');
+  }
+
+  // ===== Alexa 抓取结果 → 词海词根（一条龙） =====
+  const WS_SCENE_VOCAB = ['travel','camping','hiking','outdoor','indoor','home','office','car','gym','beach','kitchen','patio','garden','school','work','backpacking','fishing','tailgating','road trip','emergency','pool','bike','running'];
+  const WS_PEOPLE_VOCAB = ['women','men','kids','adults','seniors','toddlers','teens','girls','boys','beginners','students','nurses','athletes','family','baby','children'];
+  const WS_MATERIAL_VOCAB = ['stainless steel','plastic','glass','aluminum','silicone','bamboo','ceramic','leather','metal','abs','cotton','wood','titanium','carbon fiber','nylon','polyester','steel','rubber','acrylic'];
+  const WS_PAIN_VOCAB = ['leak proof','keeps cold','keeps hot','bpa free','lightweight','waterproof','portable','rechargeable','fast charging','quiet','durable','foldable','adjustable','non slip','easy to clean','insulated','solar powered','battery powered','heavy duty','compact','cordless','odorless','dishwasher safe','collapsible','scratch resistant','rust proof','no leak','long battery life','high capacity'];
+  const WS_FOR_BLOCK = new Set(['sale','you','your','me','the','a','an','this','that','it','free','cheap','best','less','more','money','gift','gifts','coupon','discount','repair','parts','replacement','sample','diy','how','what','who','life']);
+
+  function wsVocabHit(hay, w) {
+    return new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(hay);
+  }
+
+  // 去掉被更长词条包含的短词（如 steel ⊂ stainless steel）
+  function wsDropSub(list) {
+    return list.filter(w => !list.some(o => o !== w && o.includes(w)));
+  }
+
+  function alxDeriveWordSea() {
+    if (!alexaData || !alexaData.keywords || !alexaData.keywords.length) return null;
+    const hay = ' ' + alexaData.keywords.map(k => k.text.toLowerCase()).join(' ') + ' ';
+
+    // 产品词根：优先用本次抓取的种子词（多词优先），其次用出现最多的核心词
+    let products = (alexaData.seeds || []).map(s => String(s).toLowerCase().trim())
+      .filter(s => s.length >= 3);
+    const multi = products.filter(s => s.split(/\s+/).length >= 2);
+    if (multi.length) products = multi;
+    if (!products.length) {
+      const cc = alexaData.stats.coreCounts || {};
+      products = Object.keys(cc).sort((a, b) => cc[b] - cc[a]);
+    }
+    products = wsUniq(products).slice(0, 3);
+
+    // “for xxx” 真实搜索片段 → 场景 / 人群
+    const minedFor = wsUniq([...hay.matchAll(/\bfor ([a-z]+(?: [a-z]+)?)/g)].map(m => m[1].trim()))
+      .filter(x => !WS_FOR_BLOCK.has(x) && !WS_FOR_BLOCK.has(x.split(' ')[0]) && x.length <= 20);
+    const isPeople = x => WS_PEOPLE_VOCAB.some(p => x === p || x.startsWith(p + ' '));
+    let people = wsUniq([
+      ...WS_PEOPLE_VOCAB.filter(w => wsVocabHit(hay, w)),
+      ...minedFor.filter(isPeople),
+    ]).slice(0, 4).map(w => 'for ' + w);
+    let scene = wsUniq([
+      ...WS_SCENE_VOCAB.filter(w => wsVocabHit(hay, w)).map(w => 'for ' + w),
+      ...minedFor.filter(x => !isPeople(x)).map(x => 'for ' + x),
+    ]).slice(0, 4);
+
+    const material = wsDropSub(wsUniq(WS_MATERIAL_VOCAB.filter(w => wsVocabHit(hay, w)))).slice(0, 4);
+    const pain = wsDropSub(wsUniq(WS_PAIN_VOCAB.filter(w => wsVocabHit(hay, w)))).slice(0, 6);
+
+    // 阶段：本次种子来自 ASIN 时，按该 ASIN 评论数判断
+    let stage = 'growth';
+    const asinSeeds = (alxAsinProduct && alxAsinProduct.alexaSeeds) || [];
+    const fromAsin = asinSeeds.length && (alexaData.seeds || []).every(s => asinSeeds.indexOf(s) >= 0);
+    const rv = fromAsin ? alxAsinProduct.reviews : null;
+    if (rv != null) stage = rv < 20 ? 'cold' : (rv < 200 ? 'growth' : 'mature');
+
+    const filled = {
+      products, material, scene, people, pain,
+    };
+    if (products.length) document.getElementById('ws-product').value = products.join(', ');
+    document.getElementById('ws-material').value = material.join('\n');
+    document.getElementById('ws-scene').value = scene.join('\n');
+    document.getElementById('ws-people').value = people.join('\n');
+    document.getElementById('ws-pain').value = pain.join('\n');
+    document.getElementById('ws-stage').value = stage;
+    const cpcEl = document.getElementById('ws-cpc');
+    if (!cpcEl.value || isNaN(parseFloat(cpcEl.value))) cpcEl.value = '0.80';
+
+    const info = document.getElementById('ws-autofill-info');
+    info.className = 'ws-autofill ok';
+    info.innerHTML = '✅ 已根据本次真实搜索词自动填入：产品 <b>' + products.length + '</b> 组 · 材质 <b>' + material.length +
+      '</b> · 场景 <b>' + scene.length + '</b> · 人群 <b>' + people.length + '</b> · 功能 <b>' + pain.length +
+      '</b>（阶段按 ASIN 评论数判断）。可手动增改后重新生成。';
+    return filled;
+  }
+
+  // scroll=true 时滚到词海表单（结果区按钮调用）
+  function alxToWordSea(scroll) {
+    if (!alexaData || !alexaData.keywords.length) { alert('请先抓取 Alexa 关键词'); return false; }
+    const cfg = alxDeriveWordSea();
+    if (!cfg || !cfg.products.length) return false;
+    buildWordSea(true);
+    if (scroll !== false) {
+      logActivity('Alexa 一条龙', '按本次真实搜索词重新生成词海方案', 'alexa');
+      document.getElementById('ws-step').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    return true;
+  }
+
+  // ===== Alexa 导购洞察 =====
+  let alexaData = null;
+  let alxTab = 'kw';
+  let alxLevel = 'all';
+  let alxCore = 'all';
+  let alxPage = 1;
+  const ALX_PAGE_SIZE = 30;
+
+  document.addEventListener('click', (e) => {
+    const chip = e.target.closest('#alexa-mkt .chip');
+    if (!chip) return;
+    const siblings = document.querySelectorAll('#alexa-mkt .chip');
+    const activeCount = [...siblings].filter(s => s.classList.contains('active')).length;
+    if (chip.classList.contains('active') && activeCount <= 1) return;
+    chip.classList.toggle('active');
+  });
+  document.addEventListener('click', (e) => {
+    const chip = e.target.closest('#alx-f-level .chip');
+    if (!chip) return;
+    document.querySelectorAll('#alx-f-level .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    alxLevel = chip.dataset.level;
+    alxPage = 1;
+    renderAlxTable();
+  });
+  document.addEventListener('click', (e) => {
+    const chip = e.target.closest('#alx-f-core .chip');
+    if (!chip) return;
+    document.querySelectorAll('#alx-f-core .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    alxCore = chip.dataset.core;
+    alxPage = 1;
+    renderAlxTable();
+  });
+  document.addEventListener('click', (e) => {
+    const chip = e.target.closest('#alx-f-intent .chip');
+    if (chip) {
+      document.querySelectorAll('#alx-f-intent .chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      alxIntent = chip.dataset.intent;
+      alxPage = 1;
+      renderAlxTable();
+      return;
+    }
+    const qchip = e.target.closest('#alx-f-qtype .chip');
+    if (qchip) {
+      document.querySelectorAll('#alx-f-qtype .chip').forEach(c => c.classList.remove('active'));
+      qchip.classList.add('active');
+      alxQType = qchip.dataset.qtype;
+      alxPage = 1;
+      renderAlxTable();
+    }
+  });
+  window.addEventListener('resize', () => { drawAlxLevelChart(); drawAlxIntentChart(); });
+
+  function getAlexaMarkets() {
+    return [...document.querySelectorAll('#alexa-mkt .chip.active')].map(s => s.dataset.m);
+  }
+
+  // ===== 从 ASIN 搜索 → 类目/种子词预览 → 直接抓取 =====
+  let alxAsinProduct = null;
+  async function importAlxAsin() {
+    const asin = document.getElementById('alx-asin').value.trim().toUpperCase();
+    const mkt = document.getElementById('alx-asin-mkt').value;
+    if (!/^[A-Z0-9]{10}$/.test(asin)) { alert('ASIN 格式不对（10 位字母数字）'); return; }
+    const btn = document.getElementById('alx-asin-btn');
+    btn.disabled = true; btn.textContent = '抓取中…';
+    try {
+      const r = await fetch('/api/asin/' + asin + '?marketplace=' + mkt + '&related=0', { signal: AbortSignal.timeout(30000) });
+      const j = await r.json();
+      if (!j.ok) { alert(j.error || '抓取失败'); return; }
+      alxAsinProduct = j.product;
+
+      const p = j.product;
+      document.getElementById('alx-asin-img').src = p.mainImage || '';
+      document.getElementById('alx-asin-title').textContent = p.title || '—';
+      document.getElementById('alx-asin-brand').textContent = p.brand ? ('Brand: ' + p.brand) : '';
+      document.getElementById('alx-asin-stars').textContent = p.stars ? ('★ ' + p.stars) : '';
+      document.getElementById('alx-asin-reviews').textContent = p.reviews ? (p.reviews.toLocaleString() + ' 评价') : '';
+      document.getElementById('alx-asin-fba').style.display = p.isFBA ? 'inline-block' : 'none';
+      // 类目面包屑
+      const cats = p.categories || [];
+      document.getElementById('alx-asin-cats').innerHTML = cats.length
+        ? '<span style="color:var(--ink);font-weight:600">📍 类目路径：</span>' + cats.map((c,i) =>
+            '<span style="color:#146EB4">' + esc(c) + '</span>' + (i < cats.length - 1 ? ' › ' : '')
+          ).join('')
+        : '<span style="color:#bbb">类目未解析（新版页面结构）</span>';
+
+      const seeds = p.alexaSeeds || [];
+      document.getElementById('alx-asin-seeds').innerHTML = seeds.map(s =>
+        '<span style="font-size:11px;padding:3px 10px;background:#e3f2fd;color:#146EB4;border-radius:12px;font-weight:600;border:1px solid #c6dff7">' + esc(s) + '</span>'
+      ).join('') || '<span style="color:var(--muted);font-size:12px">未能提取有效种子词（title 太短或全部是噪声词）</span>';
+
+      document.getElementById('alx-asin-preview').style.display = 'block';
+      document.getElementById('alx-asin-run').disabled = seeds.length === 0;
+    } catch (e) {
+      alert('抓取失败：' + e.message);
+    } finally { btn.disabled = false; btn.textContent = '🔍 搜索 ASIN'; }
+  }
+
+  // 直接用 ASIN 种子词跑 Alexa —— 跳过 textarea
+  async function runAlexaFromAsin() {
+    if (!alxAsinProduct) return;
+    const seeds = alxAsinProduct.alexaSeeds || [];
+    if (!seeds.length) { alert('没有可抓的种子词'); return; }
+    const mkt = document.getElementById('alx-asin-mkt').value;
+    // 把种子词塞进 textarea，方便用户看到实际使用的种子
+    document.getElementById('alexa-seeds').value = seeds.join(', ');
+    // 强制 markets = [ASIN 站点]
+    document.querySelectorAll('#alexa-mkt .chip').forEach(c => c.classList.remove('active'));
+    const asinChip = document.querySelector('#alexa-mkt .chip[data-m="' + mkt + '"]');
+    if (asinChip) asinChip.classList.add('active');
+    // 把折叠展开（让用户看到）
+    document.querySelector('#alexa-mkt').closest('details')?.setAttribute('open', '');
+    // ASIN 模式强制启用真实搜索探针，种子一次提交（后端并发跑全部问句探针）
+    await runAlexa({ seeds, markets: [mkt], expand: true });
+    // 隐藏 ASIN 预览
+    document.getElementById('alx-asin-preview').style.display = 'none';
+  }
+
+  function applyAlxAsin(append) {
+    if (!alxAsinProduct) return;
+    const seeds = (alxAsinProduct.alexaSeeds || []).join(', ');
+    const textarea = document.getElementById('alexa-seeds');
+    if (append && textarea.value.trim()) {
+      textarea.value = textarea.value.trim().replace(/[,，、;；\n]+$/, '') + ', ' + seeds;
+    } else {
+      textarea.value = seeds;
+    }
+    document.getElementById('alx-asin-preview').style.display = 'none';
+    document.getElementById('alx-asin').value = '';
+    textarea.focus();
+    textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function switchAlxTab(t) {
+    alxTab = t;
+    document.querySelectorAll('.alx-tab').forEach(el => el.classList.toggle('active', el.dataset.tab === t));
+    const qtypeGroup = document.getElementById('alx-f-qtype-group');
+    if (qtypeGroup) qtypeGroup.style.display = (t === 'q') ? '' : 'none';
+    alxPage = 1;
+    renderAlxTable();
+  }
+
+  async function runAlexa(opts) {
+    const o = (opts && typeof opts === 'object' && !(opts instanceof Event)) ? opts : {};
+    const raw = document.getElementById('alexa-seeds').value.trim();
+    const seedList = (Array.isArray(o.seeds) && o.seeds.length)
+      ? o.seeds
+      : raw.split(/[\n,，、;；]/).map(s => s.trim()).filter(Boolean);
+    if (!seedList.length) { alert('请先输入种子关键词'); return; }
+    const markets = (Array.isArray(o.markets) && o.markets.length) ? o.markets : getAlexaMarkets();
+    if (!markets.length) { alert('请至少选择一个站点'); return; }
+    const expand = (typeof o.expand === 'boolean') ? o.expand : document.getElementById('alexa-expand').checked;
+    const btn = document.getElementById('alexa-btn');
+    btn.disabled = true; btn.textContent = '抓取中…';
+    document.getElementById('alexa-info').textContent = '请求中，请稍候…';
+
+    const merged = {};
+    const allWidgets = [];
+    const seenWidgets = new Set();
+    let totalRequests = 0;
+    const errors = [];
+
+    try {
+      for (const mkt of markets) {
+        const url = '/api/alexa/insight?seeds=' + encodeURIComponent(seedList.join('|')) +
+          '&marketplace=' + mkt + '&limit=20' + (expand ? '&expand=1' : '');
+        try {
+          const r = await fetch(url);
+          const j = await r.json();
+          if (!j.ok) throw new Error(j.error || '未知错误');
+          for (const kw of j.keywords) if (!merged[kw.text]) merged[kw.text] = kw;
+          j.widgets.forEach(w => {
+            const key = mkt + ':' + w.header;
+            if (!seenWidgets.has(key)) { seenWidgets.add(key); allWidgets.push({ ...w, marketplace: mkt }); }
+          });
+          totalRequests += j.requests;
+        } catch (e) { errors.push(seedList.join(' / ') + ' @ ' + mkt + ': ' + e.message); }
+      }
+
+      const keywords = Object.values(merged).sort((a, b) => a.text.localeCompare(b.text));
+      const stats = { total: keywords.length, questions: 0, levelCounts: [0,0,0,0,0], coreCounts: {}, intentCounts: {}, sources: { seed: 0, intent: 0, alpha: 0 } };
+      keywords.forEach(k => {
+        if (k.isQuestion) stats.questions++;
+        if (k.level <= 4) stats.levelCounts[k.level]++;
+        if (k.core) stats.coreCounts[k.core] = (stats.coreCounts[k.core] || 0) + 1;
+        stats.intentCounts[k.intent] = (stats.intentCounts[k.intent] || 0) + 1;
+        if (k.source && stats.sources[k.source] != null) stats.sources[k.source]++;
+      });
+
+      alexaData = { keywords, widgets: allWidgets, stats, markets, requests: totalRequests, errors, seeds: seedList };
+
+      document.getElementById('alx-tab-kw').textContent = stats.total - stats.questions;
+      document.getElementById('alx-tab-q').textContent = stats.questions;
+      document.getElementById('alx-sum-total').textContent = stats.total;
+      document.getElementById('alx-sum-mix').textContent = (stats.total - stats.questions) + ' + ' + stats.questions;
+      document.getElementById('alx-sum-level').textContent = stats.levelCounts.join(' / ');
+      document.getElementById('alx-sum-status').textContent = errors.length ? '部分失败' : '可用完成';
+      document.getElementById('alx-sum-status-sub').textContent = totalRequests + ' 次请求 · 真实搜索 ' + stats.sources.intent + ' 条 · ' + markets.join('+');
+      document.getElementById('alx-f-level').innerHTML = '<span class="chip active" data-level="all">全部 ' + stats.total + '</span>' +
+        [0,1,2,3,4].map(n => '<span class="chip" data-level="' + n + '">L' + n + ' ' + stats.levelCounts[n] + '</span>').join('');
+      alxLevel = 'all';
+      const coreKeys = Object.keys(stats.coreCounts).sort((a,b) => stats.coreCounts[b] - stats.coreCounts[a]).slice(0, 8);
+      document.getElementById('alx-f-core').innerHTML = '<span class="chip active" data-core="all">全部</span>' +
+        coreKeys.map(k => '<span class="chip" data-core="' + k.replace(/"/g, '&quot;') + '">' + esc(k) + ' ' + stats.coreCounts[k] + '</span>').join('');
+      alxCore = 'all';
+      const intentMap = { Informational: '信息型', Purchase: '购买型', Comparison: '对比型', FAQ: '问答型', Other: '其他' };
+      document.getElementById('alx-f-intent').innerHTML = '<span class="chip active" data-intent="all">全部</span>' +
+        Object.keys(intentMap).map(k => { const c = stats.intentCounts[k] || 0; return c ? '<span class="chip" data-intent="' + k + '">' + intentMap[k] + ' ' + c + '</span>' : ''; }).join('');
+      alxIntent = 'all';
+      const qSent = keywords.filter(k => k.qtype === 'sentence').length;
+      const qPhrase = keywords.filter(k => k.qtype === 'phrase').length;
+      document.getElementById('alx-f-qtype').innerHTML =
+        '<span class="chip active" data-qtype="all">全部 ' + stats.questions + '</span>' +
+        '<span class="chip" data-qtype="sentence">完整问句 ' + qSent + '</span>' +
+        '<span class="chip" data-qtype="phrase">意图短语 ' + qPhrase + '</span>';
+      alxQType = 'all';
+
+      document.getElementById('res-alexa').classList.add('show');
+      renderAlxTable();
+      drawAlxLevelChart();
+      drawAlxIntentChart();
+      renderEvidence();
+
+      let info = '完成。有效词 ' + stats.total + ' · 问句 ' + stats.questions + ' · 请求 ' + totalRequests + ' 次。';
+      if (alxToWordSea(false)) info += ' ✅ 已自动生成词海广告方案（见下方 ③）。';
+      if (errors.length) info += ' 失败 ' + errors.length + '：' + errors[0];
+      document.getElementById('alexa-info').textContent = info;
+      logActivity('Alexa 抓词', stats.total + ' 词 · ' + markets.join('+'), 'alexa');
+    } catch (e) {
+      alert('抓取失败：' + e.message);
+    } finally { btn.disabled = false; btn.textContent = '开始抓取'; }
+  }
+
+  function getAlxVisible() {
+    if (!alexaData) return [];
+    let list = alexaData.keywords;
+    if (alxTab === 'kw') list = list.filter(k => !k.isQuestion);
+    else list = list.filter(k => k.isQuestion);
+    if (alxLevel !== 'all') list = list.filter(k => k.level === parseInt(alxLevel, 10));
+    if (alxCore !== 'all') list = list.filter(k => k.core === alxCore);
+    if (alxIntent !== 'all') list = list.filter(k => k.intent === alxIntent);
+    if (alxTab === 'q' && alxQType !== 'all') list = list.filter(k => k.qtype === alxQType);
+    const q = (document.getElementById('alx-f-search').value || '').trim().toLowerCase();
+    if (q) list = list.filter(k => k.text.toLowerCase().includes(q) || (k.qualifier||'').toLowerCase().includes(q) || (k.intent||'').toLowerCase().includes(q));
+    return list;
+  }
+  function renderAlxTable() {
+    const visible = getAlxVisible();
+    const totalPages = Math.max(1, Math.ceil(visible.length / ALX_PAGE_SIZE));
+    if (alxPage > totalPages) alxPage = totalPages;
+    const from = (alxPage - 1) * ALX_PAGE_SIZE;
+    const pageItems = visible.slice(from, from + ALX_PAGE_SIZE);
+    const tbody = document.getElementById('alx-tbody');
+    if (!visible.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:30px">暂无匹配结果</td></tr>';
+    } else {
+      tbody.innerHTML = pageItems.map(k => {
+        const lvlClass = 'alx-badge l' + k.level;
+        const qMark = k.isQuestion
+          ? '<span class="alx-badge ' + (k.qtype === 'sentence' ? 'q' : 'p') + '" style="margin-right:6px" title="' + (k.qtype === 'sentence' ? '用户真实问句' : '买家意图短语') + '">' + (k.qtype === 'sentence' ? '问' : '短') + '</span>'
+          : '';
+        return '<tr>' +
+          '<td><span class="alx-keyword" onclick="copyKw(' + JSON.stringify(k.text) + ',this)">' + qMark + esc(k.text) + '</span></td>' +
+          '<td><span class="' + lvlClass + '">L' + k.level + '</span></td>' +
+          '<td class="alx-core">' + esc(k.core || '—') + '</td>' +
+          '<td class="alx-qual">' + esc(k.qualifier || '—') + '</td>' +
+          '<td><span class="alx-intent">' + esc(k.intent || '—') + '</span></td>' +
+        '</tr>';
+      }).join('');
+    }
+    document.getElementById('alx-f-count').textContent = visible.length + ' 条';
+    document.getElementById('alx-pager-info').textContent = visible.length ? ('第 ' + alxPage + ' / ' + totalPages + ' 页 · ' + (from+1) + '-' + Math.min(from+ALX_PAGE_SIZE, visible.length) + ' / ' + visible.length) : '—';
+    document.getElementById('alx-page-prev').disabled = alxPage <= 1;
+    document.getElementById('alx-page-next').disabled = alxPage >= totalPages;
+  }
+  function changeAlxPage(d) { alxPage += d; renderAlxTable(); }
+  let alxIntent = 'all';
+  let alxQType = 'all';
+
+  // ===== 意图分布柱状图 =====
+  function drawAlxLevelChart() {
+    const canvas = document.getElementById('alx-chart-level');
+    if (!canvas || !alexaData) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = 180 * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const W = rect.width, H = 180;
+
+    // 按 level 分组，分纯词 vs 问句
+    const byLevel = [0,1,2,3,4].map(l => {
+      const group = alexaData.keywords.filter(k => k.level === l);
+      return { total: group.length, q: group.filter(k => k.isQuestion).length, kw: group.filter(k => !k.isQuestion).length };
+    });
+    const maxVal = Math.max(1, ...byLevel.map(b => b.total));
+    const padL = 32, padR = 12, padT = 14, padB = 28;
+    const cw = W - padL - padR, ch = H - padT - padB;
+    const barW = Math.min(48, (cw / 5) * 0.55);
+    const gap = cw / 5;
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Y 轴网格
+    ctx.strokeStyle = '#eee'; ctx.lineWidth = 1;
+    ctx.fillStyle = '#aaa'; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+    for (let i = 0; i <= 3; i++) {
+      const y = padT + (ch / 3) * i;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+      const val = Math.round(maxVal - (maxVal / 3) * i);
+      ctx.fillText(val, padL - 4, y + 3);
+    }
+
+    // 每组：纯词 + 问句 两根柱
+    ['kw', 'q'].forEach((type, idx) => {
+      const color = type === 'kw' ? '#146EB4' : '#E47911';
+      byLevel.forEach((b, i) => {
+        const val = b[type];
+        const h = (val / maxVal) * ch;
+        const cx = padL + gap * i + gap / 2;
+        const bx = cx - barW + barW * idx;
+        const by = padT + ch - h;
+        // gradient fill
+        const g = ctx.createLinearGradient(bx, by, bx, by + h);
+        g.addColorStop(0, color); g.addColorStop(1, color + 'AA');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.roundRect(bx, by, barW - 2, h, 3);
+        ctx.fill();
+        // value label
+        if (val > 0) {
+          ctx.fillStyle = '#333'; ctx.textAlign = 'center'; ctx.font = 'bold 10px system-ui';
+          ctx.fillText(val, bx + (barW - 2) / 2, by - 3);
+        }
+      });
+    });
+
+    // X 轴标签
+    ctx.fillStyle = '#666'; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+    byLevel.forEach((b, i) => {
+      const cx = padL + gap * i + gap / 2;
+      ctx.fillText('L' + i, cx, H - 10);
+    });
+  }
+
+  // ===== 意图分类横条图 =====
+  function drawAlxIntentChart() {
+    const canvas = document.getElementById('alx-chart-intent');
+    if (!canvas || !alexaData) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr; canvas.height = 180 * dpr;
+    const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
+    const W = rect.width, H = 180;
+    ctx.clearRect(0, 0, W, H);
+
+    const counts = alexaData.stats.intentCounts || {};
+    const order = ['Informational', 'Purchase', 'Comparison', 'FAQ', 'Other'];
+    const display = { Informational: '信息型', Purchase: '购买型', Comparison: '对比型', FAQ: '问答型', Other: '其他' };
+    const colors = { Informational: '#146EB4', Purchase: '#007E2F', Comparison: '#E47911', FAQ: '#7D4BD0', Other: '#888' };
+    const entries = order.map(k => ({ key: k, label: display[k], count: counts[k] || 0 })).filter(e => e.count > 0);
+    if (!entries.length) { ctx.fillStyle = '#aaa'; ctx.font = '12px system-ui'; ctx.textAlign = 'center'; ctx.fillText('暂无意图数据', W / 2, H / 2); return; }
+    const total = entries.reduce((s, e) => s + e.count, 0);
+    const padL = 60, padR = 50, padT = 14, padB = 14;
+    const cw = W - padL - padR, rowH = 24, gap = 6;
+
+    entries.forEach((e, i) => {
+      const y = padT + i * (rowH + gap);
+      const w = Math.max(4, (e.count / total) * cw);
+      ctx.fillStyle = '#f0f2f4'; ctx.beginPath(); ctx.roundRect(padL, y, cw, rowH - 4, 3); ctx.fill();
+      ctx.fillStyle = colors[e.key] || '#888'; ctx.beginPath(); ctx.roundRect(padL, y, w, rowH - 4, 3); ctx.fill();
+      ctx.fillStyle = '#555'; ctx.font = '11px system-ui'; ctx.textAlign = 'right';
+      ctx.fillText(e.label, padL - 6, y + rowH / 2);
+      ctx.fillStyle = '#333'; ctx.textAlign = 'left'; ctx.font = 'bold 11px system-ui';
+      ctx.fillText(e.count + '  (' + Math.round((e.count / total) * 100) + '%)', padL + w + 6, y + rowH / 2);
+    });
+
+    document.getElementById('alx-intent-coverage').textContent = entries.length + ' / 5 类 · 覆盖 ' + total + ' 词';
+  }
+
+  // ===== 限定词意图证据 =====
+  const QUALIFIER_POINTERS = {
+    // 功能/性能类
+    'power': 'recharge power · multi device charging', 'run': 'runtime hours · device compatibility',
+    'speed': 'charging speed · output watts', 'fast': 'fast charge · quick recharge',
+    'capacity': 'wh · storage size', 'size': 'dimensions · portability',
+    'portable': 'handheld weight · travel size', 'weight': 'lbs · ounces',
+    'lithium': 'battery chemistry · cycle life', 'solar': 'solar panel wattage · charging time',
+    'generator': 'outdoor power · backup use', 'camping': 'outdoor scenarios · camping gear',
+    'home': 'indoor use · home backup', 'emergency': 'disaster prep · emergency kit',
+    // 材质/设计
+    'material': 'durable ABS · plastic housing', 'waterproof': 'ip rating · water resistance',
+    'rugged': 'impact resistant · military grade', 'color': 'color options · black white',
+    // 使用场景
+    'for': 'usage scenarios · target audience', 'with': 'bundle items · included accessories',
+    'adapter': 'compatible devices · usb-a usb-c', 'cable': 'charging cables · wire gauge',
+    'multiple': 'multi device charging · parallel output', 'dual': 'dual output · simultaneous',
+  };
+  function renderEvidence() {
+    if (!alexaData) return;
+    // 统计 qualifier 频次
+    const qStats = {};
+    alexaData.keywords.forEach(k => {
+      const q = (k.qualifier || '').trim();
+      if (!q) return;
+      q.split(/\s+/).forEach(t => {
+        const w = t.toLowerCase().replace(/[^a-z]/g, '');
+        if (w && w.length > 2) {
+          if (!qStats[w]) qStats[w] = { count: 0, qualifiers: new Set(), pointers: [] };
+          qStats[w].count++;
+          qStats[w].qualifiers.add(q);
+          if (QUALIFIER_POINTERS[w]) qStats[w].pointers.push(QUALIFIER_POINTERS[w]);
+        }
+      });
+    });
+    const keys = Object.keys(qStats).sort((a, b) => qStats[b].count - qStats[a].count).slice(0, 24);
+    const clouds = { Informational: '#ebf5fb,#146EB4', Purchase: '#e8f5e9,#007E2F', Comparison: '#fff3e0,#E47911', FAQ: '#f3e5f5,#7D4BD0', Other: '#f0f0f0,#666' };
+    // 给每个 qualifier 一个主要 intent
+    const qIntentMap = {};
+    alexaData.keywords.forEach(k => {
+      const q = (k.qualifier || '').trim().toLowerCase().split(/\s+/)[0];
+      if (q && k.intent) qIntentMap[q] = k.intent;
+    });
+
+    const cloudEl = document.getElementById('alx-ev-cloud');
+    if (!keys.length) { cloudEl.innerHTML = '<span style="color:var(--muted);font-size:12px">本次抓取未发现有效限定词，多抓几个种子词试试</span>'; document.getElementById('alx-ev-sub').textContent = '覆盖 0 条限定词 · 0 条语义映射'; return; }
+
+    cloudEl.innerHTML = keys.map(w => {
+      const s = qStats[w];
+      const intent = qIntentMap[w] || 'Informational';
+      const [bg, fg] = (clouds[intent] || clouds.Other).split(',');
+      const pointers = [...new Set(s.pointers)].slice(0, 2).join(' · ') || '';
+      return '<span class="alx-ev-chip" style="background:' + bg + ';color:' + fg + '" data-qualifier="' + w + '" onclick="filterByQualifier(\'' + w + '\')">' +
+        '<span class="ev-count">' + w + '</span>' +
+        '<span class="ev-count" style="opacity:.6">×' + s.count + '</span>' +
+        (pointers ? '<span class="alx-ev-pointers">→ ' + pointers + '</span>' : '') +
+        '</span>';
+    }).join('');
+
+    const totalQs = new Set(alexaData.keywords.map(k => (k.qualifier || '').trim()).filter(Boolean)).size;
+    document.getElementById('alx-ev-sub').textContent = '覆盖 ' + totalQs + ' 条限定词 · ' + keys.length + ' 条语义映射';
+  }
+
+  // 点击证据 chip 过滤
+  function filterByQualifier(w) {
+    document.getElementById('alx-f-search').value = w;
+    renderAlxTable();
+  }
+
+  function copyKw(text, el) {
+    navigator.clipboard.writeText(text);
+    const orig = el.textContent;
+    el.textContent = '已复制: ' + text;
+    el.style.color = 'var(--amazon-dark)';
+    setTimeout(() => { el.textContent = orig; el.style.color = ''; }, 1500);
+  }
+  function exportAlexa() {
+    if (!alexaData || !alexaData.keywords.length) { alert('请先抓取结果'); return; }
+    const tabKw = alxTab === 'kw' ? alexaData.keywords.filter(k => !k.isQuestion) : alexaData.keywords.filter(k => k.isQuestion);
+    const lines = ['Type,Keyword,Level,Core,Qualifier,Intent'];
+    tabKw.forEach(k => {
+      const row = ['Keyword', k.text, k.level, k.core || '', k.qualifier || '', k.intent || ''].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',');
+      lines.push(row);
+    });
+    downloadText('alexa-' + alxTab + '-' + new Date().toISOString().slice(0,10) + '.csv', '\ufeff' + lines.join('\n'));
+  }
+
+  // ===== 仪表盘数据：从后端 /api/dashboard 读取实时 Alexa 缓存 =====
+  async function fetchDashboard() {
+    try {
+      const r = await fetch('/api/dashboard', { signal: AbortSignal.timeout(5000) });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'unknown');
+
+      // 全局状态：后端 / Alexa 缓存
+      const dsDot = document.getElementById('ds-alexa-dot');
+      const dsEl = document.getElementById('ds-alexa');
+      const sfDot = document.getElementById('sf-dot');
+      const sfText = document.getElementById('sf-text');
+      if (d.alexa) {
+        dsEl.textContent = '可用 · ' + d.alexa.total + ' 词缓存';
+        dsDot.className = 'ds-dot ok';
+        sfDot.style.background = '#2eb872';
+        sfText.textContent = '后端在线 · Alexa ' + d.alexa.total + ' 词';
+      } else {
+        dsEl.textContent = '已连接 · 缓存生成中';
+        dsDot.className = 'ds-dot ok';
+        sfDot.style.background = '#2eb872';
+        sfText.textContent = '后端在线 · 缓存生成中';
+      }
+
+      // KPI 1: Alexa 关键词总数
+      document.getElementById('kpi-alexa-total').textContent = d.alexa ? d.alexa.total.toLocaleString() : '—';
+      // KPI 2: 问句数
+      document.getElementById('kpi-alexa-q').textContent = d.alexa ? d.alexa.questions.toLocaleString() : '0';
+      const qPct = d.alexa && d.alexa.total ? Math.round(d.alexa.questions / d.alexa.total * 100) : 0;
+      document.getElementById('kpi-alexa-q-sub').textContent = qPct + '% 占比（FAQ / Purchase / Comparison）';
+      // KPI 3: 分层覆盖
+      if (d.alexa && d.alexa.levelCounts) {
+        const L = d.alexa.levelCounts;
+        document.getElementById('kpi-levels').textContent =
+          'L0:' + L[0] + ' L1:' + L[1] + ' L2:' + L[2] + ' L3:' + L[3] + ' L4:' + L[4];
+        document.getElementById('kpi-core-count').textContent = '核心词 ' + (d.alexa.topCores ? d.alexa.topCores.length : 0);
+      }
+      // KPI 4: 自动刷新
+      if (d.nextRefreshAt) {
+        const next = new Date(d.nextRefreshAt);
+        const mins = Math.max(0, Math.round((next - Date.now()) / 60000));
+        const hours = Math.floor(mins / 60);
+        const remain = hours > 0 ? hours + 'h ' + (mins % 60) + 'm' : mins + 'm';
+        document.getElementById('kpi-refresh').textContent = remain;
+        document.getElementById('kpi-next').textContent = '下次刷新 ' + remain + ' 后';
+      }
+      // 更新时间标签
+      if (d.alexaUpdatedAt) {
+        const t = new Date(d.alexaUpdatedAt);
+        const rel = Math.max(0, Math.round((Date.now() - t) / 1000));
+        const relText = rel < 60 ? rel + 's 前' : rel < 3600 ? Math.round(rel/60) + 'min 前' : Math.round(rel/3600) + 'h 前';
+        document.getElementById('kpi-alexa-time').textContent = '更新 ' + relText;
+      }
+      // Top Core 榜
+      const list = document.getElementById('top-cores-list');
+      if (d.alexa && d.alexa.topCores && d.alexa.topCores.length) {
+        list.innerHTML = d.alexa.topCores.map(([core, cnt]) => {
+          const pct = Math.round(cnt / d.alexa.total * 100);
+          const hue = Math.max(20, 220 - pct * 2);
+          return '<div style="font-size:12.5px;padding:6px 12px;border-radius:14px;background:hsl(' + hue + ',60%,95%);border:1px solid hsl(' + hue + ',40%,85%);color:var(--ink);font-weight:600">' + esc(core) + ' <span style="color:var(--muted);font-weight:400;font-size:11px">×' + cnt + '</span></div>';
+        }).join('');
+        document.getElementById('top-cores-status').textContent = '自动刷新';
+      } else {
+        list.innerHTML = '<span style="color:var(--muted);font-size:12px">等待后台首次抓取（约 20 秒）…</span>';
+        document.getElementById('top-cores-status').textContent = '首次抓取中';
+      }
+    } catch (e) {
+      document.getElementById('kpi-alexa-total').textContent = '—';
+      document.getElementById('kpi-alexa-time').textContent = '后端暂不可用';
+      document.getElementById('kpi-refresh').textContent = '—';
+      document.getElementById('kpi-next').textContent = '等待后端';
+      document.getElementById('top-cores-list').innerHTML = '<span style="color:var(--muted);font-size:12px">需要 FunctionWeb 后端支持才能展示实时数据</span>';
+      document.getElementById('top-cores-status').textContent = '后端未就绪';
+      const dsDot = document.getElementById('ds-alexa-dot');
+      const dsEl = document.getElementById('ds-alexa');
+      const sfDot = document.getElementById('sf-dot');
+      const sfText = document.getElementById('sf-text');
+      if (dsDot) dsDot.className = 'ds-dot bad';
+      if (dsEl) dsEl.textContent = '不可用';
+      if (sfDot) sfDot.style.background = '#C40000';
+      if (sfText) sfText.textContent = '后端未连接 · 仅本地工具可用';
+    }
+  }
+
+  // ===== ASIN 产品分析 =====
+  async function runAsin() {
+    const input = document.getElementById('asin-input').value.trim().toUpperCase();
+    const mkt = document.getElementById('asin-mkt').value;
+    if (!/^[A-Z0-9]{10}$/.test(input)) { alert('ASIN 格式不对：应为 10 位字母数字'); return; }
+    const btn = document.getElementById('asin-btn');
+    btn.disabled = true; btn.textContent = '抓取中…';
+    try {
+      const t0 = Date.now();
+      const r = await fetch('/api/asin/' + input + '?marketplace=' + mkt + '&related=1', { signal: AbortSignal.timeout(45000) });
+      const j = await r.json();
+      if (!j.ok) { alert(j.error || '抓取失败'); btn.disabled = false; btn.textContent = '抓取分析'; return; }
+
+      const p = j.product;
+      document.getElementById('res-asin').classList.add('show');
+
+      // 产品卡
+      document.getElementById('asin-img').src = p.mainImage || '';
+      document.getElementById('asin-host').textContent = p.host ? ('https://www.' + p.host + '/dp/' + p.asin) : '';
+      document.getElementById('asin-title').textContent = p.title || '—';
+      document.getElementById('asin-code').textContent = p.asin;
+      document.getElementById('asin-brand').textContent = p.brand || '—';
+      document.getElementById('asin-stars').textContent = p.stars != null ? p.stars + '/5' : '—';
+      document.getElementById('asin-reviews').textContent = p.reviews != null ? p.reviews.toLocaleString() : '—';
+      document.getElementById('asin-seller').textContent = p.seller || '—';
+      document.getElementById('asin-fba-badge').style.display = p.isFBA ? 'inline-block' : 'none';
+      document.getElementById('asin-cats').textContent = '类目: ' + (p.categories?.join(' › ') || '—');
+
+      // Bullets
+      const bulletsEl = document.getElementById('asin-bullets');
+      if (p.bullets?.length) {
+        bulletsEl.innerHTML = p.bullets.map(b => '· ' + esc(b)).join('<br>');
+      } else {
+        bulletsEl.innerHTML = '<span style="color:var(--muted);font-size:12px">无可用卖点</span>';
+      }
+
+      // Details
+      const detEl = document.getElementById('asin-details');
+      const keys = Object.keys(p.details || {});
+      if (keys.length) {
+        detEl.innerHTML = keys.map(k =>
+          '<div style="display:flex;gap:6px;font-size:12px;line-height:1.5">' +
+          '<span style="color:var(--muted);min-width:100px">' + esc(k) + ':</span>' +
+          '<span style="color:var(--ink);font-weight:500">' + esc(p.details[k]) + '</span></div>'
+        ).join('');
+      } else {
+        detEl.innerHTML = '<span style="color:var(--muted);font-size:12px">产品详情不可用</span>';
+      }
+
+      // 种子词
+      const seedsEl = document.getElementById('asin-seeds');
+      if (p.seedWords?.length) {
+        seedsEl.innerHTML = p.seedWords.map(w =>
+          '<span style="font-size:11.5px;padding:3px 9px;background:#f4f5f7;border:1px solid var(--line-soft);border-radius:4px;color:var(--ink);cursor:pointer" onclick="copyKw(\'' + w + '\',this)">' + esc(w) + '</span>'
+        ).join('');
+      } else {
+        seedsEl.innerHTML = '<span style="color:var(--muted);font-size:12px">未能提取</span>';
+      }
+
+      // 扩展相关词
+      const relatedEl = document.getElementById('asin-related');
+      document.getElementById('asin-related-count').textContent = j.related?.keywords?.length + ' 个相关词';
+      if (j.related?.keywords?.length) {
+        relatedEl.innerHTML = j.related.keywords.slice(0, 80).map(k => {
+          const colors = ['#e3f2fd,#146EB4', '#e8f5e9,#007E2F', '#fff3e0,#E47911', '#f3e5f5,#7D4BD0', '#ffebee,#C40000'];
+          const [bg, fg] = colors[k.level % colors.length].split(',');
+          return '<span style="font-size:11.5px;padding:3px 9px;background:' + bg + ';border-radius:4px;color:' + fg + ';font-weight:600;cursor:pointer" onclick="copyKw(\'' + k.text.replace(/'/g, "\\'") + '\',this)" title="L' + k.level + ' · ' + (k.core || '') + '">' + esc(k.text) + '</span>';
+        }).join('');
+      } else {
+        relatedEl.innerHTML = '<span style="color:var(--muted);font-size:12px">未获取到扩展词</span>';
+      }
+
+      btn.textContent = '完成 (' + ((Date.now() - t0) / 1000).toFixed(1) + 's)';
+      setTimeout(() => { btn.disabled = false; btn.textContent = '抓取分析'; }, 1500);
+    } catch (e) {
+      alert('抓取失败：' + e.message);
+      btn.disabled = false; btn.textContent = '抓取分析';
+    }
+  }
+
+  // ===== 仪表盘销售趋势图 =====
+  function drawDashTrend(){
+    const canvas = document.getElementById('dash-trend');
+    if(!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    let w = canvas.parentElement.clientWidth - 36;
+    if(w <= 0) w = Math.min(620, Math.max(320, window.innerWidth - 300));
+    const h = 240;
+    canvas.width = Math.round(w*dpr);
+    canvas.height = Math.round(h*dpr);
+    canvas.style.width = w+'px';
+    canvas.style.height = h+'px';
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,h);
+
+    const data = Array.from({length:30},(_,i)=>{
+      const base = 1800 + i*45;
+      const wave = Math.sin(i/3.2)*320;
+      const noise = ((i*137)%100)/100*160;
+      return Math.round(base + wave + noise);
+    });
+    const max = Math.max(...data)*1.15, min = Math.min(...data)*0.85;
+    const padL = 46, padR = 12, padT = 14, padB = 30;
+    const plotW = w-padL-padR, plotH = h-padT-padB;
+    const x = i => padL + plotW*i/(data.length-1);
+    const y = v => padT + plotH*(1-(v-min)/(max-min));
+
+    ctx.strokeStyle='#eef1f4'; ctx.lineWidth=1; ctx.fillStyle='#8a9099';
+    ctx.font='11px -apple-system,Segoe UI,PingFang SC,sans-serif'; ctx.textAlign='right';
+    for(let t=0;t<=4;t++){
+      const v = min + (max-min)*t/4, yy=y(v);
+      ctx.beginPath(); ctx.moveTo(padL,yy); ctx.lineTo(w-padR,yy); ctx.stroke();
+      ctx.fillText('$'+Math.round(v/100)*100, padL-6, yy+4);
+    }
+    ctx.textAlign='center';
+    ['11-01','11-08','11-15','11-22','11-30'].forEach((d,idx)=>{
+      const px = padL + plotW*(idx/4);
+      ctx.fillText(d, px, h-10);
+    });
+    ctx.textAlign='left';
+
+    ctx.beginPath();
+    data.forEach((v,i)=>{ const px=x(i), py=y(v); i===0?ctx.moveTo(px,py):ctx.lineTo(px,py); });
+    ctx.strokeStyle='#FF9900'; ctx.lineWidth=2.5; ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+    ctx.lineTo(x(data.length-1), y(min)); ctx.lineTo(x(0), y(min)); ctx.closePath();
+    ctx.fillStyle='rgba(255,153,0,.12)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x(data.length-1), y(data[data.length-1]), 4, 0, Math.PI*2); ctx.fillStyle='#E47911'; ctx.fill();
+  }
+
+  window.addEventListener('resize',()=>{
+    requestAnimationFrame(drawDashTrend);
+    if(lastAdsResults.length) requestAnimationFrame(drawAdsChart);
+  });
+
+  // ===== API 接入 =====
+  async function loadApiConfig(){
+    try {
+      const r = await fetch('/api/spapi/config');
+      const d = await r.json();
+      const readyEl = document.getElementById('apiset-ready');
+      readyEl.textContent = d.ready ? '已就绪' : '未配置';
+      readyEl.className = 'v ' + (d.ready ? 'good' : 'warn');
+      document.getElementById('apiset-count').textContent = d.configuredCount + ' / ' + d.total;
+      document.getElementById('apiset-region').textContent = (d.region||'').toUpperCase();
+      const missEl = document.getElementById('apiset-missing');
+      if(d.ready){
+        missEl.innerHTML = '全部凭据已配置，可正常拉取数据。';
+      } else {
+        missEl.innerHTML = (d.missing||[]).map(m=>'<span class="kw-chip" data-pool="negative">'+m.label+'</span>').join(' ') || '无';
+      }
+    } catch(e){
+      const readyEl = document.getElementById('apiset-ready');
+      readyEl.textContent = '后端不可用';
+      readyEl.className = 'v bad';
+    }
+  }
+  async function testConnection(){
+    const res = document.getElementById('apiset-result');
+    const btn = document.getElementById('apiset-test');
+    btn.disabled = true; btn.textContent = '连接中…';
+    res.className = 'feedback show warn';
+    res.innerHTML = '正在测试 LWA 授权与 SP-API 连通性…';
+    try {
+      const r = await fetch('/api/spapi/test');
+      const d = await r.json();
+      if(d.ok){
+        res.className = 'feedback show ok';
+        res.innerHTML = '连接成功，已获取 SP-API 数据。';
+      } else {
+        res.className = 'feedback show bad';
+        res.innerHTML = '连接失败：' + (d.error || ('HTTP ' + d.status));
+      }
+    } catch(e){
+      res.className = 'feedback show bad';
+      res.innerHTML = '请求异常：' + e.message;
+    } finally {
+      btn.disabled = false; btn.textContent = '测试连接';
+    }
+  }
+
+  // 初始计算（预填充各工具结果）
+  calcAds(); classifyKeywords(); calcCompare(); calcProfit(); calcKeyword(); calcProduct(); calcBsr();
+  drawDashTrend();
+  fetchDashboard();   // 加载后端实时 Alexa 缓存数据
+  loadApiConfig();
+  renderPageGuides();
+  renderActivity();
+</script>
+</body>
+</html>

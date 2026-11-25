@@ -1,0 +1,7 @@
+# 亚马逊卖家助手健康检查：连续失败时重启 systemd 服务。
+# Install: sudo cp deploy/dist/cron.d/amazon-seller-tools-health /etc/cron.d/
+#
+# /etc/cron.d/ 里的行需要用户字段（与 crontab -e 不同）。
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+* * * * * root APP_PORT=${APP_PORT} /bin/sh ${INSTALL_DIR}/deploy/scripts/healthcheck.sh >> ${HEALTH_LOG} 2>&1

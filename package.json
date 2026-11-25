@@ -1,0 +1,12 @@
+{
+  "name": "amazon-seller-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "亚马逊卖家助手 - 带 SP-API 后端的运营工具集",
+  "engines": {
+    "node": ">=18 <=20"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}
