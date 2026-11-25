@@ -42,10 +42,11 @@ jobs:
           zip -r amazon-seller-tools.zip amazon-seller-tools
           unzip -l amazon-seller-tools.zip
 
-      - name: 创建 GitHub Release
+      - name: 创建 / 更新 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           body_path: .github/release-body.md
           files: release/amazon-seller-tools.zip
           fail_on_unmatched_files: true
+          overwrite: true
