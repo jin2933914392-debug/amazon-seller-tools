@@ -783,6 +783,125 @@ async function handleApi(req, res, pathname, query) {
     }
   }
 
+  // ===== Brand Analytics 搜索词报告（真实 ABA 排名 + 搜索频率 + 点击份额） =====
+  // 流程: createReport → getReport 轮询 → getReportDocument 下载 → 解析 TSV
+  // 参考: https://developer-docs.amazon.com/sp-api/docs/reports-api-v2021-06-30-reference
+  if (pathname === '/api/spapi/brand-search-terms') {
+    try {
+      const st = configStatus();
+      if (!st.ready) {
+        return sendJson(res, 400, { ok: false, error: 'SP-API 凭据未配置完整', missing: st.missing });
+      }
+      // 日期范围（默认最近 30 天）
+      const days = Math.min(90, Math.max(7, parseInt(query.days || '30', 10) || 30));
+      const dataEndDate = new Date().toISOString().slice(0, 10);
+      const dataStartDate = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      const marketplaceId = query.marketplaceId || CFG.marketplaceId;
+      const sellerId = query.sellerId; // Brand Analytics 需要 sellerId（可选，SP-API 自己能推断）
+      const asinFilter = (query.asin || '').trim().toUpperCase(); // 可选：只看这个 ASIN 相关的搜索词
+      const keywordFilter = (query.keyword || '').trim().toLowerCase(); // 可选：关键词搜索
+
+      // 1) 提交报告
+      const createBody = {
+        reportType: 'GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT',
+        marketplaceIds: [marketplaceId],
+        dataStartDate,
+        dataEndDate,
+        reportOptions: {},
+      };
+      if (sellerId) createBody.sellerIds = [sellerId];
+      const createRes = await spApiRequest('POST', '/reports/2021-06-30/reports', { body: createBody });
+      if (createRes.status >= 400 || !createRes.body.reportId) {
+        return sendJson(res, 400, { ok: false, step: 'createReport', status: createRes.status, body: createRes.body });
+      }
+      const reportId = createRes.body.reportId;
+
+      // 2) 轮询报告状态（最多 2 分钟，10 秒间隔）
+      let report = null;
+      for (let i = 0; i < 12; i++) {
+        await new Promise(r => setTimeout(r, 10000));
+        const gr = await spApiRequest('GET', '/reports/2021-06-30/reports/' + reportId);
+        report = gr.body;
+        if (report.processingStatus === 'DONE') break;
+        if (report.processingStatus === 'FATAL' || report.processingStatus === 'CANCELLED') {
+          return sendJson(res, 400, { ok: false, step: 'getReport', status: report.processingStatus, report });
+        }
+      }
+      if (!report || report.processingStatus !== 'DONE') {
+        return sendJson(res, 400, { ok: false, step: 'getReport', status: 'timeout', report });
+      }
+
+      // 3) 下载 document
+      const docRes = await spApiRequest('GET', '/reports/2021-06-30/documents/' + report.reportDocumentId);
+      const documentUrl = docRes.body.url;
+      if (!documentUrl) {
+        return sendJson(res, 400, { ok: false, step: 'getReportDocument', body: docRes.body });
+      }
+
+      // 4) 直接下载 TSV（Amazon 返回的是 gzip 压缩的 TSV，用 node zlib 解压）
+      const { createGunzip } = require('zlib');
+      const { Readable } = require('stream');
+      const fetchRes = await fetch(documentUrl);
+      const buf = Buffer.from(await fetchRes.arrayBuffer());
+      // 解压 gzip
+      const decompressed = await new Promise((resolve, reject) => {
+        const gunzip = createGunzip();
+        gunzip.on('data', chunk => chunks.push(chunk));
+        gunzip.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+        gunzip.on('error', reject);
+        let chunks = [];
+        Readable.from(buf).pipe(gunzip);
+      });
+
+      // 5) 解析 TSV
+      const lines = decompressed.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) {
+        return sendJson(res, 200, { ok: true, headers: [], items: [], note: '报告为空，可能这个时间段内 Brand Analytics 数据还未生成' });
+      }
+      const headers = lines[0].split('\t').map(h => h.trim());
+      const idx = {}; // 找各列位置（Amazon 列名可能因站点略有不同，模糊匹配）
+      const findIdx = (patterns) => headers.findIndex(h => patterns.some(p => new RegExp(p, 'i').test(h)));
+      idx.term = findIdx(['^search term$', 'keyword term', 'query']);
+      idx.abaRank = findIdx(['aba', 'brand analytics.*rank', 'search frequency rank']);
+      idx.searchFreq = findIdx(['search frequency', 'frequency rank', 'search query performance']);
+      idx.clickShare = findIdx(['click share', 'share of clicks']);
+      idx.convShare = findIdx(['conversion share', 'share of conversions']);
+      idx.products = findIdx(['products', 'asin.*in.*search']);
+
+      const items = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split('\t');
+        const kw = (cols[idx.term] || '').trim().toLowerCase();
+        if (!kw) continue;
+        // 可选过滤
+        if (keywordFilter && !kw.includes(keywordFilter)) continue;
+        if (asinFilter) {
+          const ps = (cols[idx.products] || '').toUpperCase();
+          if (!ps.includes(asinFilter)) continue;
+        }
+        items.push({
+          keyword: kw,
+          abaRank: idx.abaRank >= 0 ? parseInt(cols[idx.abaRank], 10) || null : null,
+          searchFreq: idx.searchFreq >= 0 ? parseInt(cols[idx.searchFreq], 10) || null : null,
+          clickShare: idx.clickShare >= 0 ? parseFloat(cols[idx.clickShare]) || null : null,
+          convShare: idx.convShare >= 0 ? parseFloat(cols[idx.convShare]) || null : null,
+        });
+      }
+      items.sort((a, b) => (a.abaRank ?? 999999) - (b.abaRank ?? 999999));
+
+      return sendJson(res, 200, {
+        ok: true,
+        reportType: 'GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT',
+        dataStartDate, dataEndDate, marketplaceId,
+        headers,
+        itemCount: items.length,
+        items: items.slice(0, 500), // 最多返回 500 条，避免 payload 太大
+      });
+    } catch (e) {
+      return sendJson(res, 500, { ok: false, error: e.message, stack: e.stack?.slice(0, 300) });
+    }
+  }
+
   // Alexa 导购洞察：抓取亚马逊 autocomplete 提示词
   if (pathname === '/api/alexa/insight') {
     try {
