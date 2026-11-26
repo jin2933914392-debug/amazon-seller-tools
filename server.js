@@ -12,10 +12,18 @@ const CACHE_MARKETPLACES = ['US'];
 const CACHE_LIMIT = 20;
 const CACHE_EXPAND = true;
 const REFRESH_INTERVAL_MS = 3 * 60 * 60 * 1000;
-let alexaCache = { data: null, updatedAt: null, status: 'idle', durationMs: 0, lastError: null, requests: 0,
-                   trend: null, trendUpdatedAt: null, trendLastError: null };
-// 排名快照历史：marketplace -> seed -> [{ time, ranked:[{kw,rank}] }]，最近 MAX_TREND_HISTORY 次
 const MAX_TREND_HISTORY = 96;  // 3 小时一次 × 96 ≈ 12 天
+// ====== 西柚找词风格：按 ASIN 监控排名变化 ======
+// 可通过 /api/alexa/monitor 动态添加；空数组=未配置时不会跑 ASIN 快照
+let MONITOR_ASINS = [];
+let alexaCache = {
+  data: null, updatedAt: null, status: 'idle', durationMs: 0, lastError: null, requests: 0,
+  // 原始 seed 的排名快照：marketplace -> seed -> [{ time, ranked:[{kw,rank}] }]
+  trend: null, trendUpdatedAt: null, trendLastError: null,
+  // 按 ASIN 监控的排名快照：asin -> marketplace -> [{ time, seeds:[str], ranked:[{kw, rank, seed}] }]
+  // 这里的 seed 是从该 ASIN 页面提取出来的（品牌、产品主词、类目等）
+  trendAsin: {},  // { [asin]: { [market]: [{ time, seeds, ranked }] } }
+};
 let cacheRefreshing = false;
 
 // ===== 真实买家搜索探针 =====
@@ -182,7 +190,6 @@ async function refreshAlexaCache() {
         trendNow[mkt] = await crawlSeedTrend(CACHE_SEEDS, mkt, CACHE_LIMIT);
       }
       const nowIso = new Date().toISOString();
-      // 初始化 trend 结构
       if (!alexaCache.trend) alexaCache.trend = {};
       for (const mkt of CACHE_MARKETPLACES) {
         if (!alexaCache.trend[mkt]) alexaCache.trend[mkt] = {};
@@ -190,7 +197,6 @@ async function refreshAlexaCache() {
           const sk = seed.toLowerCase();
           if (!alexaCache.trend[mkt][sk]) alexaCache.trend[mkt][sk] = [];
           alexaCache.trend[mkt][sk].push({ time: nowIso, ranked: trendNow[mkt][sk] || [] });
-          // 截断
           if (alexaCache.trend[mkt][sk].length > MAX_TREND_HISTORY) {
             alexaCache.trend[mkt][sk].shift();
           }
@@ -202,6 +208,42 @@ async function refreshAlexaCache() {
     } catch (te) {
       console.error('[trend] snapshot FAIL:', te.message);
       alexaCache.trendLastError = te.message;
+    }
+
+    // ====== 按 ASIN 监控排名（西柚找词核心） ======
+    if (MONITOR_ASINS.length) {
+      try {
+        const nowIso = new Date().toISOString();
+        const limitPerSeed = 20;
+        // 每个 ASIN × 每个 marketplace：先 scrape 拿 product，再抽 seed，再 crawl autocomplete
+        for (const asinObj of MONITOR_ASINS) {
+          const asin = (asinObj.asin || '').toUpperCase();
+          const marketplace = (asinObj.marketplace || 'US').toUpperCase();
+          if (!asin || !/^[A-Z0-9]{10}$/.test(asin)) continue;
+          try {
+            const { html, status } = await fetchAsinPage(asin, marketplace);
+            if (status !== 200 || (html || '').length < 50000) continue;
+            const product = parseAsinProduct(html, asin, marketplace);
+            if (!product || !product.title) continue;
+
+            const { seeds, ranked } = await runAsinSnapshot(asin, marketplace, product, limitPerSeed);
+            if (!seeds.length) continue;
+
+            // 存进 trendAsin[asin][marketplace]
+            if (!alexaCache.trendAsin[asin]) alexaCache.trendAsin[asin] = {};
+            if (!alexaCache.trendAsin[asin][marketplace]) alexaCache.trendAsin[asin][marketplace] = [];
+            alexaCache.trendAsin[asin][marketplace].push({ time: nowIso, seeds, ranked });
+            if (alexaCache.trendAsin[asin][marketplace].length > MAX_TREND_HISTORY) {
+              alexaCache.trendAsin[asin][marketplace].shift();
+            }
+            console.log('[trend-asin]', asin, marketplace, seeds.length, 'seeds,', ranked.length, 'ranked words');
+          } catch (ae) {
+            console.error('[trend-asin]', asin, marketplace, 'FAIL:', ae.message);
+          }
+        }
+      } catch (ae2) {
+        console.error('[trend-asin] batch FAIL:', ae2.message);
+      }
     }
   } catch (e) {
     console.error('[cache] Alexa refresh FAIL:', e.message);
@@ -289,6 +331,107 @@ async function crawlSeedTrend(seeds, marketplace, limit) {
     }
   }
   return out;
+}
+
+// ===== 从 ASIN 产品页提取监控用的 seed =====
+// 规则：品牌词 + 产品主词（标题主部分）+ 类目名词 + 卖点里重复出现的名词短语
+// 避免太长的 seed，只取 3-5 个能直接扔进 Amazon autocomplete 有意义的词
+function extractSeedsFromProduct(product) {
+  if (!product) return [];
+  const seen = new Set();
+  const out = [];
+  const add = (s) => {
+    if (!s) return;
+    const t = s.trim().toLowerCase();
+    if (t.length < 3 || t.length > 40) return;
+    if (!/^[a-z0-9\s\-+&]+$/.test(t)) return;
+    if (seen.has(t)) return;
+    seen.add(t);
+    out.push(s.trim());
+  };
+
+  // 1) 品牌词——一般是这个 ASIN 下所有流量词的核心锚点
+  if (product.brand) add(product.brand);
+
+  // 2) 标题主词：去掉品牌、数字规格、长描述后取剩余名词短语
+  //    "Stanley Quencher H2.0 FlowState 40 oz Tumbler" → "Quencher FlowState Tumbler"
+  let titleMain = (product.title || '')
+    .split('|')[0].split(/[:–—\-]/)[0].trim()
+    .replace(/\b\d{1,3}(?:oz|ml|l|w|mah|v|in|inch|cm|ft|pack|pcs|pieces?|count|set|kit)\b/gi, '')
+    .replace(/\b\d{2,4}\b/g, '')
+    .replace(/\b[a-z]{1,2}\b/gi, '')
+    .replace(/\s+/g, ' ').trim();
+  // 去掉开头的品牌词（避免和 #1 重复）
+  if (product.brand && titleMain.toLowerCase().startsWith(product.brand.toLowerCase())) {
+    titleMain = titleMain.slice(product.brand.length).trim();
+  }
+  // 拆成 2-3 词的短语
+  const words = titleMain.split(/\s+/).filter(w => w.length > 2);
+  if (words.length >= 2) add(words.slice(0, 2).join(' '));
+  if (words.length >= 3) add(words.slice(0, 3).join(' '));
+  if (words.length === 1 && words[0]) add(words[0]);
+
+  // 3) 类目里的具体名词（剔除 Electronics / Home & Kitchen 这种大类，以及 Amazon UI 文案）
+  if (product.categories) {
+    const CAT_BLACKLIST = /^(electronics|home|kitchen|health|beauty|toys|games|sports|outdoors|clothing|shoes|jewelry|books|grocery|pet|office|tools|automotive|baby|industrial|handmade|arts|crafts|collectibles|fine art|musical instruments|software|videogames|see more|make money|with us|more|amazon|prime|see all)$/i;
+    const CATEGORY_MIN_WORDS = 2;  // 至少 2 个词才叫类目
+    for (const cat of product.categories) {
+      if (!cat) continue;
+      const t = cat.trim();
+      if (t.length < 6 || t.length > 50) continue;
+      if (CAT_BLACKLIST.test(t)) continue;
+      if (t.split(/\s+/).length < CATEGORY_MIN_WORDS) continue;
+      add(t);
+    }
+  }
+
+  // 4) 卖点里高频出现的产品名（兜底）
+  if (product.bullets && product.bullets.length) {
+    const STOPWORDS = new Set([
+      'with','your','that','this','have','from','were','what','when','how','why','who','which',
+      'their','them','they','than','then','than','there','here','just','also','only','such',
+      'into','over','after','before','about','under','between','through','while','because',
+      'being','having','doing','getting','making','using','those','these','other','another',
+      'plus','plus','free','best','most','more','less','new','old','good','great','easy',
+      'fast','slow','high','low','full','half','part','whole','one','two','three','first','second','third',
+      'every','each','any','all','some','many','much','few','lot','lots','pair','pairs',
+    ]);
+    // 典型组件名词 → 作为 autocomplete seed 会抓出大量无关词
+    const COMPONENT_NOISE = /^(liquid|retina|chip|display|battery|camera|screen|touch|usb|c|wi|fi|wi-fi|gen|generation|rear|front|back|wide|ultra|true|tone|face|center|stage|cable|connector|port|slot|drive|card|dock|charger|adapter|keyboard|case|cover|pen|pencil|airpods|airtag|mouse|speaker|headset|trackpad)$/i;
+    const nounCounts = {};
+    for (const b of product.bullets) {
+      const tokens = b.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !STOPWORDS.has(w) && !COMPONENT_NOISE.test(w));
+      for (const t of tokens) nounCounts[t] = (nounCounts[t] || 0) + 1;
+    }
+    const topNouns = Object.entries(nounCounts).sort((a,b)=>b[1]-a[1]).slice(0, 3).filter(([w,c])=>c>=2).map(([w])=>w);
+    for (const n of topNouns) add(n);
+  }
+
+  return out.slice(0, 5);  // 最多 5 个 seed，太多会稀释排名信号
+}
+
+// ====== 针对单个 ASIN 跑排名快照 ======
+// 返回 { seeds, ranked:[{kw, rank, seed}] }，seed 标记该词是哪个 seed 下的 autocomplete 结果
+async function snapshotAsinTrend(asin, marketplace) {
+  // 先拿到 product 才能抽 seed——如果已经缓存过就用缓存
+  const product = await (async () => {
+    // 从 trendAsin 历史里拿上次存的 seeds 也行，但如果有 product 快照更准
+    return null;  // 让调用方先 scrape 再传 seeds 进来
+  })();
+  return product;
+}
+async function runAsinSnapshot(asin, marketplace, product, limit = 20) {
+  const seeds = extractSeedsFromProduct(product);
+  if (!seeds.length) return { seeds: [], ranked: [] };
+
+  const all = [];
+  for (const seed of seeds) {
+    try {
+      const { ranked } = await crawlOne(seed, marketplace, limit);
+      for (const r of ranked) all.push({ kw: r.kw, rank: r.rank, seed: seed.toLowerCase() });
+    } catch {}
+  }
+  return { seeds, ranked: all };
 }
 
 // 脏词过滤：亚马逊 autocomplete 有时会把产品标题片段当 "suggestion" 返回
@@ -661,106 +804,146 @@ async function handleApi(req, res, pathname, query) {
     }
   }
 
+  // ===== 辅助：对比两次快照 =====
+  function compareSnapshots(currRanked, prevRanked, extra = {}) {
+    const currMap = new Map();
+    for (const r of currRanked || []) currMap.set(r.kw, r.rank);
+    const prevMap = new Map();
+    for (const r of prevRanked || []) prevMap.set(r.kw, r.rank);
+
+    const items = [];
+    for (const [kw, rank] of currMap) {
+      const prevRank = prevMap.has(kw) ? prevMap.get(kw) : null;
+      const isNew = prevRank == null;
+      items.push({ keyword: kw, rankNow: rank, rankPrev: prevRank, delta: isNew ? null : rank - prevRank, isNew, isGone: false, ...extra });
+    }
+    for (const [kw, prevRank] of prevMap) {
+      if (!currMap.has(kw)) {
+        items.push({ keyword: kw, rankNow: null, rankPrev: prevRank, delta: null, isNew: false, isGone: true, ...extra });
+      }
+    }
+    return items;
+  }
+
   // 西柚找词风格：ABA 排名 / 热度变化监控
-  // 对每个 marketplace × seed，对比"最新快照 vs 上一次快照"，算出：
-  //   - 同词 rank 变化 delta（负=涨，正=跌）
-  //   - 新冒出来的词（isNew）
-  //   - 消失的词（isGone）
+  // query.asin 为空时返回全局 seed 趋势；指定 asin 时返回该 ASIN 的流量词涨跌
   if (pathname === '/api/alexa/trend') {
+    const targetAsin = (query.asin || '').trim().toUpperCase();
+    const targetMarket = (query.marketplace || 'US').toUpperCase();
+
+    // ==== 按 ASIN 查看（西柚找词核心） ====
+    if (targetAsin && /^[A-Z0-9]{10}$/.test(targetAsin)) {
+      const asinHistory = alexaCache.trendAsin?.[targetAsin]?.[targetMarket] || [];
+      if (!asinHistory.length) {
+        return sendJson(res, 200, { ok: true, scope: 'asin', asin: targetAsin, marketplace: targetMarket, updatedAt: null, items: [], note: '暂无该 ASIN 的排名历史，可手动查询一次触发快照（/api/asin/' + targetAsin + '?trend=1），或等待后台每 3 小时自动刷新' });
+      }
+      const curr = asinHistory[asinHistory.length - 1];
+      const prev = asinHistory.length >= 2 ? asinHistory[asinHistory.length - 2] : null;
+      const items = compareSnapshots(curr.ranked, prev ? prev.ranked : null, { asin: targetAsin, marketplace: targetMarket });
+
+      const rankedItems = items.filter(i => !i.isNew && !i.isGone).sort((a, b) => {
+        if (a.delta == null) return 1; if (b.delta == null) return -1;
+        return a.delta - b.delta;
+      });
+      const newItems = items.filter(i => i.isNew);
+      const goneItems = items.filter(i => i.isGone);
+
+      // 按 seed 分组（该词是从哪个 seed 的 autocomplete 来的）
+      const perSeed = {};
+      for (const it of items) {
+        const seed = it.seed || 'unknown';
+        if (!perSeed[seed]) perSeed[seed] = [];
+        perSeed[seed].push(it);
+      }
+
+      return sendJson(res, 200, {
+        ok: true, scope: 'asin',
+        asin: targetAsin, marketplace: targetMarket,
+        updatedAt: curr.time, prevUpdatedAt: prev ? prev.time : null,
+        seeds: curr.seeds,
+        snapshotCount: asinHistory.length,
+        latestCount: items.length,
+        rising: rankedItems.slice(0, 30),
+        falling: rankedItems.slice(-30).reverse(),
+        newKeywords: newItems.slice(0, 30),
+        goneKeywords: goneItems.slice(0, 30),
+        perSeed,
+      });
+    }
+
+    // ==== 全局 seed 趋势（兼容旧 API） ====
     const trendCache = alexaCache.trend;
     if (!trendCache) {
-      return sendJson(res, 200, { ok: true, trendUpdatedAt: null, items: [], note: '暂无排名历史，首次运行后每 3 小时刷新一次快照' });
+      return sendJson(res, 200, { ok: true, scope: 'global', trendUpdatedAt: null, items: [], note: '暂无排名历史，首次运行后每 3 小时刷新一次快照' });
     }
-    const now = new Date().toISOString();
     const hours = Math.floor(REFRESH_INTERVAL_MS / 3600000);
-
-    // 聚合所有 marketplace × seed 的变化
     const items = [];
-    const perSeed = {};  // seed -> [{...变化项}] 方便前端按 seed 分组
-
+    const perSeed = {};
     for (const mkt of Object.keys(trendCache)) {
       for (const seed of Object.keys(trendCache[mkt])) {
         const history = trendCache[mkt][seed];
         if (history.length === 0) continue;
-
         const curr = history[history.length - 1];
         const prev = history.length >= 2 ? history[history.length - 2] : null;
-
-        const currMap = new Map();
-        for (const r of curr.ranked || []) currMap.set(r.kw, r.rank);
-
-        const prevMap = new Map();
-        if (prev) for (const r of prev.ranked || []) prevMap.set(r.kw, r.rank);
-
-        const seedChanges = [];
-
-        // 本次快照里的词
-        for (const [kw, rank] of currMap) {
-          const prevRank = prevMap.has(kw) ? prevMap.get(kw) : null;
-          let delta = null;
-          let isNew = false;
-          if (prevRank == null) {
-            isNew = true;
-          } else {
-            delta = rank - prevRank;  // 负 = rank 变小 = 涨了；正 = rank 变大 = 跌了
-          }
-          const item = {
-            keyword: kw,
-            seed,
-            marketplace: mkt,
-            rankNow: rank,
-            rankPrev: prevRank,
-            delta,
-            isNew,
-            isGone: false,
-          };
-          items.push(item);
-          seedChanges.push(item);
-        }
-
-        // 上次快照里有但这次没了 = 消失词
-        for (const [kw, prevRank] of prevMap) {
-          if (!currMap.has(kw)) {
-            const item = {
-              keyword: kw,
-              seed,
-              marketplace: mkt,
-              rankNow: null,
-              rankPrev: prevRank,
-              delta: null,
-              isNew: false,
-              isGone: true,
-            };
-            items.push(item);
-            seedChanges.push(item);
-          }
-        }
-
-        perSeed[seed] = seedChanges;
+        const seedItems = compareSnapshots(curr.ranked, prev ? prev.ranked : null, { seed, marketplace: mkt });
+        items.push(...seedItems);
+        perSeed[seed] = seedItems;
       }
     }
-
-    // 排序：涨词（delta 最负）→ 跌词（delta 最正）→ 新词 → 消失
     const rankedItems = items.filter(i => !i.isNew && !i.isGone).sort((a, b) => {
-      if (a.delta == null) return 1;
-      if (b.delta == null) return -1;
-      return a.delta - b.delta;  // 升序：最负（涨最多）排最前
+      if (a.delta == null) return 1; if (b.delta == null) return -1;
+      return a.delta - b.delta;
     });
     const newItems = items.filter(i => i.isNew);
     const goneItems = items.filter(i => i.isGone);
-
     return sendJson(res, 200, {
-      ok: true,
-      trendUpdatedAt: alexaCache.trendUpdatedAt,
-      trendLastError: alexaCache.trendLastError,
+      ok: true, scope: 'global',
+      trendUpdatedAt: alexaCache.trendUpdatedAt, trendLastError: alexaCache.trendLastError,
       refreshIntervalHours: hours,
-      latestCount: (rankedItems.length + newItems.length + goneItems.length),
-      rising: rankedItems.slice(0, 30),       // Top 30 涨词
-      falling: rankedItems.slice(-30).reverse(), // Top 30 跌词（排序末尾倒转）
+      rising: rankedItems.slice(0, 30),
+      falling: rankedItems.slice(-30).reverse(),
       newKeywords: newItems.slice(0, 30),
       goneKeywords: goneItems.slice(0, 30),
-      perSeed,  // 前端可按 seed 展开看单个种子词的全貌
+      perSeed,
     });
+  }
+
+  // ===== 监控管理：动态注册/删除要跟踪的 ASIN =====
+  // GET    /api/alexa/monitor              → 列出当前监控的 ASIN
+  // POST   /api/alexa/monitor              → 添加 { asin, marketplace } 到监控列表
+  // DELETE /api/alexa/monitor?asin=XXX     → 从监控列表移除
+  if (pathname === '/api/alexa/monitor') {
+    try {
+      const method = req.method.toUpperCase();
+      if (method === 'GET') {
+        const asinsNow = MONITOR_ASINS.map(a => ({ asin: a.asin, marketplace: a.marketplace, hasHistory: !!(alexaCache.trendAsin[a.asin] && alexaCache.trendAsin[a.asin][a.marketplace] && alexaCache.trendAsin[a.asin][a.marketplace].length) }));
+        return sendJson(res, 200, { ok: true, count: MONITOR_ASINS.length, asins: asinsNow });
+      }
+      if (method === 'POST') {
+        let body = '';
+        req.on('data', c => body += c);
+        await new Promise(r => req.on('end', r));
+        let payload;
+        try { payload = JSON.parse(body || '{}'); } catch { payload = {}; }
+        const asin = String(payload.asin || query.asin || '').toUpperCase();
+        const marketplace = String(payload.marketplace || query.marketplace || 'US').toUpperCase();
+        if (!asin || !/^[A-Z0-9]{10}$/.test(asin)) return sendJson(res, 400, { ok: false, error: 'ASIN 格式无效（应为 10 位大写字母数字）' });
+        const exists = MONITOR_ASINS.find(a => a.asin === asin && a.marketplace === marketplace);
+        if (exists) return sendJson(res, 200, { ok: true, alreadyExists: true, asins: MONITOR_ASINS });
+        MONITOR_ASINS.push({ asin, marketplace });
+        return sendJson(res, 200, { ok: true, added: { asin, marketplace }, asins: MONITOR_ASINS });
+      }
+      if (method === 'DELETE') {
+        const asin = String(query.asin || '').toUpperCase();
+        const marketplace = String(query.marketplace || 'US').toUpperCase();
+        const before = MONITOR_ASINS.length;
+        MONITOR_ASINS = MONITOR_ASINS.filter(a => !(a.asin === asin && a.marketplace === marketplace));
+        return sendJson(res, 200, { ok: true, removed: before - MONITOR_ASINS.length, asins: MONITOR_ASINS });
+      }
+      return sendJson(res, 405, { ok: false, error: 'Method not allowed (use GET / POST / DELETE)' });
+    } catch (e) {
+      return sendJson(res, 500, { ok: false, error: e.message });
+    }
   }
 
   // 仪表盘聚合数据：首页用
@@ -1100,10 +1283,51 @@ if (pathname.startsWith('/api/asin/')) {
       }
       related = { seeds: seeds.filter(Boolean), keywords: relatedKws };
     }
+
+    // ===== 西柚找词风格：跑一次排名快照并对比历史 =====
+    let trend = null;
+    if (query.trend === '1' || query.trend === 'true') {
+      try {
+        const nowIso = new Date().toISOString();
+        const { seeds, ranked } = await runAsinSnapshot(asin, marketplace, product, 20);
+
+        // 存进 trendAsin（即使没在 MONITOR_ASINS 里也存——手动查询触发的快照很有价值）
+        if (!alexaCache.trendAsin) alexaCache.trendAsin = {};
+        if (!alexaCache.trendAsin[asin]) alexaCache.trendAsin[asin] = {};
+        if (!alexaCache.trendAsin[asin][marketplace]) alexaCache.trendAsin[asin][marketplace] = [];
+        alexaCache.trendAsin[asin][marketplace].push({ time: nowIso, seeds, ranked });
+        if (alexaCache.trendAsin[asin][marketplace].length > MAX_TREND_HISTORY) {
+          alexaCache.trendAsin[asin][marketplace].shift();
+        }
+
+        // 对比：最新 vs 上一次
+        const hist = alexaCache.trendAsin[asin][marketplace];
+        const curr = hist[hist.length - 1];
+        const prev = hist.length >= 2 ? hist[hist.length - 2] : null;
+        const items = compareSnapshots(curr.ranked, prev ? prev.ranked : null, { asin, marketplace });
+        const rankedItems = items.filter(i => !i.isNew && !i.isGone).sort((a, b) => (a.delta ?? 0) - (b.delta ?? 0));
+
+        trend = {
+          updatedAt: curr.time, prevUpdatedAt: prev ? prev.time : null,
+          seeds, snapshotCount: hist.length,
+          rising: rankedItems.slice(0, 20),
+          falling: rankedItems.slice(-20).reverse(),
+          newKeywords: items.filter(i => i.isNew).slice(0, 20),
+          goneKeywords: items.filter(i => i.isGone).slice(0, 20),
+          all: items,
+        };
+        console.log('[trend-asin] manual snapshot', asin, marketplace, seeds.length, 'seeds,', ranked.length, 'ranked');
+      } catch (te) {
+        console.error('[trend-asin] manual FAIL:', te.message);
+        trend = { error: te.message };
+      }
+    }
+
     return sendJson(res, 200, {
       ok: true,
       product,
       related,
+      trend,
       host,
       url,
       fetchMs: Date.now() - t0,
