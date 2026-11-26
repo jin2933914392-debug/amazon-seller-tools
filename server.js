@@ -372,21 +372,34 @@ function extractSeedsFromProduct(product) {
   if (words.length === 1 && words[0]) add(words[0]);
 
   // 3) 类目里的具体名词（剔除 Electronics / Home & Kitchen 这种大类，以及 Amazon UI 文案）
-  if (product.categories) {
-    const CAT_BLACKLIST = /^(electronics|home|kitchen|health|beauty|toys|games|sports|outdoors|clothing|shoes|jewelry|books|grocery|pet|office|tools|automotive|baby|industrial|handmade|arts|crafts|collectibles|fine art|musical instruments|software|videogames|see more|make money|with us|more|amazon|prime|see all)$/i;
-    const CATEGORY_MIN_WORDS = 2;  // 至少 2 个词才叫类目
-    for (const cat of product.categories) {
-      if (!cat) continue;
-      const t = cat.trim();
-      if (t.length < 6 || t.length > 50) continue;
-      if (CAT_BLACKLIST.test(t)) continue;
-      if (t.split(/\s+/).length < CATEGORY_MIN_WORDS) continue;
-      add(t);
+  //    关键：类目链里只取**最后一级**（最具体的那个），前面的大类 Patio / Lawn 全丢
+  if (product.categories && product.categories.length) {
+    // 大类黑名单：Amazon 页面上经常出现但和具体产品完全无关的词
+    const CAT_BLACKLIST = /^(electronics|home|kitchen|health|beauty|toys|games|sports|outdoors|clothing|shoes|jewelry|books|grocery|pet|office|tools|automotive|baby|industrial|handmade|arts|crafts|collectibles|fine art|musical instruments|software|videogames|see more|make money|with us|more|amazon|prime|see all|patio|lawn|garden|furniture|outdoor|indoor|room|bedroom|bathroom|kitchen|living room|dining|home decor|storage|cleaning|school|college|work|business|car|truck|vehicle|boat|rv|motorcycle)$/i;
+    // 只取类目链的最后一级——前面的 Patio / Lawn 这种大类丢了
+    const lastCat = product.categories[product.categories.length - 1];
+    if (lastCat && !CAT_BLACKLIST.test(lastCat) && lastCat.length >= 6 && lastCat.length <= 50 && lastCat.split(/\s+/).length >= 2) {
+      add(lastCat);
     }
   }
 
   // 4) 卖点里高频出现的产品名（兜底）
   if (product.bullets && product.bullets.length) {
+    // 先把 Amazon 页面底部的排名区 / 对比区行过滤掉
+    const CLEANED_BULLETS = product.bullets.filter(b => {
+      if (!b) return false;
+      const t = b.toLowerCase();
+      // 排名区：#848 in Patio, Lawn & Garden
+      if (/^\s*#?\s*\d+\s*(?:in|on|for)\s+/.test(t)) return false;
+      // 类目标签行："Patio, Lawn & Garden"（纯类目名，没有描述性内容）
+      if (/^[a-z\s,&-]{3,40}$/.test(t) && /(patio|lawn|garden|outdoor|indoor|kitchen|bathroom|bedroom|living|office|car|truck|boat)/.test(t)) return false;
+      // See Top / Best Sellers / Amazon Choice
+      if (/see top|best sellers|amazon choice|best rank|best seller|see all/.test(t)) return false;
+      // 过短（<15 字符）且不含动词的很可能是类目标签
+      if (t.length < 15 && !/\b(is|for|with|that|keeps|made|works|comes|includes|provides|offers|featuring)\b/.test(t)) return false;
+      return true;
+    });
+
     const STOPWORDS = new Set([
       'with','your','that','this','have','from','were','what','when','how','why','who','which',
       'their','them','they','than','then','than','there','here','just','also','only','such',
@@ -398,9 +411,19 @@ function extractSeedsFromProduct(product) {
     ]);
     // 典型组件名词 → 作为 autocomplete seed 会抓出大量无关词
     const COMPONENT_NOISE = /^(liquid|retina|chip|display|battery|camera|screen|touch|usb|c|wi|fi|wi-fi|gen|generation|rear|front|back|wide|ultra|true|tone|face|center|stage|cable|connector|port|slot|drive|card|dock|charger|adapter|keyboard|case|cover|pen|pencil|airpods|airtag|mouse|speaker|headset|trackpad)$/i;
+    // 纯规格词：100w / 89.6wh / 200w / 32oz / 12gb → 作为 seed 只会抓出对应规格的所有品类
+    const SPEC_NOISE = /^\d+[a-z]{1,4}$/i;
+    // 太泛的通用形容词：portable / compact / lightweight / portable → 任何产品都能用
+    const GENERIC_NOISE = /^(portable|compact|lightweight|mini|small|large|medium|big|heavy|thin|thick|flat|round|square|oval|wide|narrow|short|long|single|double|triple|basic|standard|premium|professional|personal|home|office|travel)$/i;
     const nounCounts = {};
-    for (const b of product.bullets) {
-      const tokens = b.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !STOPWORDS.has(w) && !COMPONENT_NOISE.test(w));
+    for (const b of CLEANED_BULLETS) {
+      const tokens = b.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w =>
+        w.length > 3 &&
+        !STOPWORDS.has(w) &&
+        !COMPONENT_NOISE.test(w) &&
+        !SPEC_NOISE.test(w) &&
+        !GENERIC_NOISE.test(w)
+      );
       for (const t of tokens) nounCounts[t] = (nounCounts[t] || 0) + 1;
     }
     const topNouns = Object.entries(nounCounts).sort((a,b)=>b[1]-a[1]).slice(0, 3).filter(([w,c])=>c>=2).map(([w])=>w);
@@ -805,21 +828,41 @@ async function handleApi(req, res, pathname, query) {
   }
 
   // ===== 辅助：对比两次快照 =====
+  // currRanked / prevRanked 每项都应该是 { kw, rank, seed? }
   function compareSnapshots(currRanked, prevRanked, extra = {}) {
+    // 把 kw -> { rank, seed } 存起来，别丢 seed
     const currMap = new Map();
-    for (const r of currRanked || []) currMap.set(r.kw, r.rank);
+    for (const r of currRanked || []) currMap.set(r.kw.toLowerCase(), { rank: r.rank, seed: r.seed || null });
     const prevMap = new Map();
-    for (const r of prevRanked || []) prevMap.set(r.kw, r.rank);
+    for (const r of prevRanked || []) prevMap.set(r.kw.toLowerCase(), { rank: r.rank, seed: r.seed || null });
 
     const items = [];
-    for (const [kw, rank] of currMap) {
-      const prevRank = prevMap.has(kw) ? prevMap.get(kw) : null;
-      const isNew = prevRank == null;
-      items.push({ keyword: kw, rankNow: rank, rankPrev: prevRank, delta: isNew ? null : rank - prevRank, isNew, isGone: false, ...extra });
+    for (const [kw, cur] of currMap) {
+      const prev = prevMap.has(kw) ? prevMap.get(kw) : null;
+      const isNew = prev == null;
+      // seed 优先用当前快照的，没有就用之前快照的
+      const seed = cur.seed || (prev && prev.seed) || null;
+      items.push({
+        keyword: kw,
+        seed,
+        rankNow: cur.rank,
+        rankPrev: isNew ? null : prev.rank,
+        delta: isNew ? null : cur.rank - prev.rank,
+        isNew, isGone: false,
+        ...extra,
+      });
     }
-    for (const [kw, prevRank] of prevMap) {
+    for (const [kw, prev] of prevMap) {
       if (!currMap.has(kw)) {
-        items.push({ keyword: kw, rankNow: null, rankPrev: prevRank, delta: null, isNew: false, isGone: true, ...extra });
+        items.push({
+          keyword: kw,
+          seed: prev.seed || null,
+          rankNow: null,
+          rankPrev: prev.rank,
+          delta: null,
+          isNew: false, isGone: true,
+          ...extra,
+        });
       }
     }
     return items;
@@ -841,10 +884,11 @@ async function handleApi(req, res, pathname, query) {
       const prev = asinHistory.length >= 2 ? asinHistory[asinHistory.length - 2] : null;
       const items = compareSnapshots(curr.ranked, prev ? prev.ranked : null, { asin: targetAsin, marketplace: targetMarket });
 
-      const rankedItems = items.filter(i => !i.isNew && !i.isGone).sort((a, b) => {
-        if (a.delta == null) return 1; if (b.delta == null) return -1;
-        return a.delta - b.delta;
-      });
+      const rankedItems = items.filter(i => !i.isNew && !i.isGone);
+      // rising = delta < 0（rank 变小 = 排名上升 = 热度涨了）
+      const risingItems = rankedItems.filter(i => i.delta != null && i.delta < 0).sort((a, b) => a.delta - b.delta);
+      // falling = delta > 0（rank 变大 = 排名下降 = 热度跌了）
+      const fallingItems = rankedItems.filter(i => i.delta != null && i.delta > 0).sort((a, b) => b.delta - a.delta);
       const newItems = items.filter(i => i.isNew);
       const goneItems = items.filter(i => i.isGone);
 
@@ -863,8 +907,8 @@ async function handleApi(req, res, pathname, query) {
         seeds: curr.seeds,
         snapshotCount: asinHistory.length,
         latestCount: items.length,
-        rising: rankedItems.slice(0, 30),
-        falling: rankedItems.slice(-30).reverse(),
+        rising: risingItems.slice(0, 30),
+        falling: fallingItems.slice(0, 30),
         newKeywords: newItems.slice(0, 30),
         goneKeywords: goneItems.slice(0, 30),
         perSeed,
@@ -890,18 +934,17 @@ async function handleApi(req, res, pathname, query) {
         perSeed[seed] = seedItems;
       }
     }
-    const rankedItems = items.filter(i => !i.isNew && !i.isGone).sort((a, b) => {
-      if (a.delta == null) return 1; if (b.delta == null) return -1;
-      return a.delta - b.delta;
-    });
+    const rankedItems = items.filter(i => !i.isNew && !i.isGone);
+    const risingItems = rankedItems.filter(i => i.delta != null && i.delta < 0).sort((a, b) => a.delta - b.delta);
+    const fallingItems = rankedItems.filter(i => i.delta != null && i.delta > 0).sort((a, b) => b.delta - a.delta);
     const newItems = items.filter(i => i.isNew);
     const goneItems = items.filter(i => i.isGone);
     return sendJson(res, 200, {
       ok: true, scope: 'global',
       trendUpdatedAt: alexaCache.trendUpdatedAt, trendLastError: alexaCache.trendLastError,
       refreshIntervalHours: hours,
-      rising: rankedItems.slice(0, 30),
-      falling: rankedItems.slice(-30).reverse(),
+      rising: risingItems.slice(0, 30),
+      falling: fallingItems.slice(0, 30),
       newKeywords: newItems.slice(0, 30),
       goneKeywords: goneItems.slice(0, 30),
       perSeed,
@@ -1305,13 +1348,15 @@ if (pathname.startsWith('/api/asin/')) {
         const curr = hist[hist.length - 1];
         const prev = hist.length >= 2 ? hist[hist.length - 2] : null;
         const items = compareSnapshots(curr.ranked, prev ? prev.ranked : null, { asin, marketplace });
-        const rankedItems = items.filter(i => !i.isNew && !i.isGone).sort((a, b) => (a.delta ?? 0) - (b.delta ?? 0));
+        const rankedItems = items.filter(i => !i.isNew && !i.isGone);
+        const risingItems = rankedItems.filter(i => i.delta != null && i.delta < 0).sort((a, b) => a.delta - b.delta);
+        const fallingItems = rankedItems.filter(i => i.delta != null && i.delta > 0).sort((a, b) => b.delta - a.delta);
 
         trend = {
           updatedAt: curr.time, prevUpdatedAt: prev ? prev.time : null,
           seeds, snapshotCount: hist.length,
-          rising: rankedItems.slice(0, 20),
-          falling: rankedItems.slice(-20).reverse(),
+          rising: risingItems.slice(0, 20),
+          falling: fallingItems.slice(0, 20),
           newKeywords: items.filter(i => i.isNew).slice(0, 20),
           goneKeywords: items.filter(i => i.isGone).slice(0, 20),
           all: items,
