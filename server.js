@@ -12,7 +12,10 @@ const CACHE_MARKETPLACES = ['US'];
 const CACHE_LIMIT = 20;
 const CACHE_EXPAND = true;
 const REFRESH_INTERVAL_MS = 3 * 60 * 60 * 1000;
-let alexaCache = { data: null, updatedAt: null, status: 'idle', durationMs: 0, lastError: null, requests: 0 };
+let alexaCache = { data: null, updatedAt: null, status: 'idle', durationMs: 0, lastError: null, requests: 0,
+                   trend: null, trendUpdatedAt: null, trendLastError: null };
+// 排名快照历史：marketplace -> seed -> [{ time, ranked:[{kw,rank}] }]，最近 MAX_TREND_HISTORY 次
+const MAX_TREND_HISTORY = 96;  // 3 小时一次 × 96 ≈ 12 天
 let cacheRefreshing = false;
 
 // ===== 真实买家搜索探针 =====
@@ -171,6 +174,35 @@ async function refreshAlexaCache() {
       requests: totalRequests,
     };
     console.log('[cache] Alexa refresh OK:', merged.length, 'keywords,', totalRequests, 'requests,', ((Date.now()-t0)/1000).toFixed(1), 's');
+
+    // ===== 排名快照（西柚找词风格：监控每个 seed 下 ABA 排名 / 热度变化） =====
+    try {
+      const trendNow = {};
+      for (const mkt of CACHE_MARKETPLACES) {
+        trendNow[mkt] = await crawlSeedTrend(CACHE_SEEDS, mkt, CACHE_LIMIT);
+      }
+      const nowIso = new Date().toISOString();
+      // 初始化 trend 结构
+      if (!alexaCache.trend) alexaCache.trend = {};
+      for (const mkt of CACHE_MARKETPLACES) {
+        if (!alexaCache.trend[mkt]) alexaCache.trend[mkt] = {};
+        for (const seed of CACHE_SEEDS) {
+          const sk = seed.toLowerCase();
+          if (!alexaCache.trend[mkt][sk]) alexaCache.trend[mkt][sk] = [];
+          alexaCache.trend[mkt][sk].push({ time: nowIso, ranked: trendNow[mkt][sk] || [] });
+          // 截断
+          if (alexaCache.trend[mkt][sk].length > MAX_TREND_HISTORY) {
+            alexaCache.trend[mkt][sk].shift();
+          }
+        }
+      }
+      alexaCache.trendUpdatedAt = nowIso;
+      alexaCache.trendLastError = null;
+      console.log('[trend] snapshot OK:', nowIso);
+    } catch (te) {
+      console.error('[trend] snapshot FAIL:', te.message);
+      alexaCache.trendLastError = te.message;
+    }
   } catch (e) {
     console.error('[cache] Alexa refresh FAIL:', e.message);
     alexaCache.status = 'error';
@@ -219,20 +251,44 @@ async function amazonSuggest(prefix, marketplace, limit) {
   return res.json();
 }
 
-// 抓取单个种子词，返回 {keywords:[], widgets:[]}
+// 抓取单个种子词，返回 {keywords:[], widgets:[], ranked:[{kw,rank}]}
+// rank 取 KeywordSuggestion 在 suggestions 数组中的位置（从 0 起），这是 Amazon autocomplete 真实排名
 async function crawlOne(prefix, marketplace, limit) {
   const data = await amazonSuggest(prefix, marketplace, limit);
   const keywords = [];
   const widgets = [];
+  const ranked = [];
+  let rank = 0;
   for (const s of data.suggestions || []) {
     if (s.suggType === 'KeywordSuggestion') {
-      if (isCleanKeyword(s.value)) keywords.push(s.value);
+      if (isCleanKeyword(s.value)) {
+        keywords.push(s.value);
+        ranked.push({ kw: s.value.toLowerCase().trim(), rank });
+      }
+      rank++;  // 不管过不过滤，position 递增（Amazon 返回的顺序就是真实排名）
     } else if (s.suggType === 'WidgetSuggestion') {
       const items = (s.widgetItems || []).map(w => w.value).filter(Boolean).filter(isCleanKeyword);
       if (items.length) widgets.push({ header: (s.metadata && s.metadata.header) || s.value, items });
+      // WidgetSuggestion 也算在 position 序列里
+      rank++;
     }
   }
-  return { keywords, widgets };
+  return { keywords, widgets, ranked };
+}
+
+// 仅用原始种子词跑一次 autocomplete，保留完整 rank 序列，作为"当前快照"
+// 这才是西柚找词那种 ABA 排名监控——每个 seed 下关键词在 autocomplete 列表里的位置就是热度
+async function crawlSeedTrend(seeds, marketplace, limit) {
+  const out = {};
+  for (const seed of seeds) {
+    try {
+      const { ranked } = await crawlOne(seed, marketplace, limit);
+      out[seed.toLowerCase()] = ranked;
+    } catch (e) {
+      out[seed.toLowerCase()] = [];
+    }
+  }
+  return out;
 }
 
 // 脏词过滤：亚马逊 autocomplete 有时会把产品标题片段当 "suggestion" 返回
@@ -605,6 +661,108 @@ async function handleApi(req, res, pathname, query) {
     }
   }
 
+  // 西柚找词风格：ABA 排名 / 热度变化监控
+  // 对每个 marketplace × seed，对比"最新快照 vs 上一次快照"，算出：
+  //   - 同词 rank 变化 delta（负=涨，正=跌）
+  //   - 新冒出来的词（isNew）
+  //   - 消失的词（isGone）
+  if (pathname === '/api/alexa/trend') {
+    const trendCache = alexaCache.trend;
+    if (!trendCache) {
+      return sendJson(res, 200, { ok: true, trendUpdatedAt: null, items: [], note: '暂无排名历史，首次运行后每 3 小时刷新一次快照' });
+    }
+    const now = new Date().toISOString();
+    const hours = Math.floor(REFRESH_INTERVAL_MS / 3600000);
+
+    // 聚合所有 marketplace × seed 的变化
+    const items = [];
+    const perSeed = {};  // seed -> [{...变化项}] 方便前端按 seed 分组
+
+    for (const mkt of Object.keys(trendCache)) {
+      for (const seed of Object.keys(trendCache[mkt])) {
+        const history = trendCache[mkt][seed];
+        if (history.length === 0) continue;
+
+        const curr = history[history.length - 1];
+        const prev = history.length >= 2 ? history[history.length - 2] : null;
+
+        const currMap = new Map();
+        for (const r of curr.ranked || []) currMap.set(r.kw, r.rank);
+
+        const prevMap = new Map();
+        if (prev) for (const r of prev.ranked || []) prevMap.set(r.kw, r.rank);
+
+        const seedChanges = [];
+
+        // 本次快照里的词
+        for (const [kw, rank] of currMap) {
+          const prevRank = prevMap.has(kw) ? prevMap.get(kw) : null;
+          let delta = null;
+          let isNew = false;
+          if (prevRank == null) {
+            isNew = true;
+          } else {
+            delta = rank - prevRank;  // 负 = rank 变小 = 涨了；正 = rank 变大 = 跌了
+          }
+          const item = {
+            keyword: kw,
+            seed,
+            marketplace: mkt,
+            rankNow: rank,
+            rankPrev: prevRank,
+            delta,
+            isNew,
+            isGone: false,
+          };
+          items.push(item);
+          seedChanges.push(item);
+        }
+
+        // 上次快照里有但这次没了 = 消失词
+        for (const [kw, prevRank] of prevMap) {
+          if (!currMap.has(kw)) {
+            const item = {
+              keyword: kw,
+              seed,
+              marketplace: mkt,
+              rankNow: null,
+              rankPrev: prevRank,
+              delta: null,
+              isNew: false,
+              isGone: true,
+            };
+            items.push(item);
+            seedChanges.push(item);
+          }
+        }
+
+        perSeed[seed] = seedChanges;
+      }
+    }
+
+    // 排序：涨词（delta 最负）→ 跌词（delta 最正）→ 新词 → 消失
+    const rankedItems = items.filter(i => !i.isNew && !i.isGone).sort((a, b) => {
+      if (a.delta == null) return 1;
+      if (b.delta == null) return -1;
+      return a.delta - b.delta;  // 升序：最负（涨最多）排最前
+    });
+    const newItems = items.filter(i => i.isNew);
+    const goneItems = items.filter(i => i.isGone);
+
+    return sendJson(res, 200, {
+      ok: true,
+      trendUpdatedAt: alexaCache.trendUpdatedAt,
+      trendLastError: alexaCache.trendLastError,
+      refreshIntervalHours: hours,
+      latestCount: (rankedItems.length + newItems.length + goneItems.length),
+      rising: rankedItems.slice(0, 30),       // Top 30 涨词
+      falling: rankedItems.slice(-30).reverse(), // Top 30 跌词（排序末尾倒转）
+      newKeywords: newItems.slice(0, 30),
+      goneKeywords: goneItems.slice(0, 30),
+      perSeed,  // 前端可按 seed 展开看单个种子词的全貌
+    });
+  }
+
   // 仪表盘聚合数据：首页用
   if (pathname === '/api/dashboard') {
     const a = alexaCache;
@@ -626,6 +784,8 @@ async function handleApi(req, res, pathname, query) {
       } : null,
       alexaUpdatedAt: a.updatedAt,
       alexaStatus: a.status,
+      trendUpdatedAt: a.trendUpdatedAt,
+      trendLastError: a.trendLastError,
       spapiReady: st.ready,
       spapiConfigured: st.configuredCount + '/' + st.total,
       serverTime: new Date().toISOString(),
