@@ -1020,10 +1020,26 @@ async function handleApi(req, res, pathname, query) {
         ok: true,
         asin,
         marketplace,
+        productType: product.productType,
         title: product.title,
         brand: product.brand,
         categoryTree: product.categoryTree,  // [{ name, categoryId }]
-        mainImage: product.image,
+        mainImage: product.image || product.images?.[0],
+
+        // ⭐ 关键销量指标（Keepa 真实估算，非 proxy）
+        monthlySold: product.monthlySold || null,                    // 月销量估算
+        monthlySoldHistory: (product.monthlySoldHistory || []).map((v, i) => ({ day: i, sold: v })),
+        totalSold: product.monthlySold ? Math.round(product.monthlySold * 12) : null,   // 年销量估算
+
+        // 时间戳（Keepa Time Minutes → ISO）
+        lastUpdate: product.lastUpdate ? new Date(product.lastUpdate * 60000).toISOString() : null,
+        trackingSince: product.trackingSince ? new Date(product.trackingSince * 60000).toISOString() : null,
+        listedSince: product.listedSince ? new Date(product.listedSince * 60000).toISOString() : null,
+
+        // 星级 / 评论
+        rating: product.reviews?.rating || null,
+        reviewCount: product.reviews?.reviewCount || null,
+
         current: {
           amazonPrice: current[0] != null ? current[0] / 100 : null,   // 分→美元
           newPrice: current[1] != null ? current[1] / 100 : null,
