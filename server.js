@@ -570,9 +570,13 @@ const CFG = {
   awsAccessKey: process.env.SP_API_AWS_ACCESS_KEY_ID || '',
   awsSecretKey: process.env.SP_API_AWS_SECRET_ACCESS_KEY || '',
   roleArn: process.env.SP_API_ROLE_ARN || '',
-  region: process.env.SP_API_REGION || 'na', // na / eu / fe
-  marketplaceId: process.env.SP_API_MARKETPLACE_ID || 'ATVPDKIKX0DER', // 默认美国站
+  region: process.env.SP_API_REGION || 'na',
+  marketplaceId: process.env.SP_API_MARKETPLACE_ID || 'ATVPDKIKX0DER',
+  keepaToken: process.env.KEEPA_TOKEN || '',
 };
+
+// Keepa domain 映射 (marketplace → Keepa domain id)
+const KEEPA_DOMAINS = { US: 1, UK: 2, DE: 3, FR: 4, JP: 5, CA: 6, IT: 7, ES: 8, IN: 9, MX: 10, BR: 11 };
 
 // SP-API 端点与 AWS 签名 region 映射
 const SP_API_HOSTS = {
@@ -902,7 +906,171 @@ async function handleApi(req, res, pathname, query) {
     }
   }
 
-  // Alexa 导购洞察：抓取亚马逊 autocomplete 提示词
+  // ===== Keepa API: 真实 BSR 排名 + 价格历史 + 180 天统计 =====
+  if (pathname === '/api/keepa/product') {
+    try {
+      if (!CFG.keepaToken) {
+        return sendJson(res, 400, { ok: false, error: 'Keepa Token 未配置 (环境变量 KEEPA_TOKEN)' });
+      }
+      const asin = (query.asin || '').toUpperCase().trim();
+      if (!/^B0[A-Z0-9]{8}$/.test(asin)) {
+        return sendJson(res, 400, { ok: false, error: '无效 ASIN 格式，应为 B0 开头 10 位' });
+      }
+      const marketplace = (query.marketplace || query.mkt || 'US').toUpperCase();
+      const domain = KEEPA_DOMAINS[marketplace] || 1;
+      const days = Math.min(365, Math.max(7, parseInt(query.days || '180', 10) || 180));
+
+      const url = 'https://api.keepa.com/product' +
+        '?key=' + CFG.keepaToken +
+        '&domain=' + domain +
+        '&asin=' + asin +
+        '&stats=' + days +   // 直接拿解码后的 stats（avg/min/max/current）
+        '&history=1' +        // 也拿时间序列（CSV 格式）
+        '&offers=0';          // 不拿 offers（节省 token 配额）
+
+      const resp = await fetch(url);
+      if (resp.status >= 400) {
+        const text = await resp.text();
+        return sendJson(res, resp.status, { ok: false, error: 'Keepa API error', keepaStatus: resp.status, body: text.slice(0, 300) });
+      }
+      const data = await resp.json();
+      const product = data.products?.[0];
+      if (!product) {
+        return sendJson(res, 404, { ok: false, error: 'Keepa 查不到这个 ASIN', asin });
+      }
+
+      // ===== Keepa CSV 解码（差分编码） =====
+      // Keepa CSV 格式是 [[type, timestamp, value], ...] 的 base64 + 自定义整数序列
+      // 我们用 stats 字段（Keepa 已帮我们解好）+ 手动解 salesRank 历史
+      const keepaDecode = (csv) => {
+        if (!csv || !csv.length) return [];
+        const out = [];
+        let lastTimestamp = 0;
+        let lastValue = 0;
+        for (let i = 0; i < csv.length; i++) {
+          const row = csv[i];
+          if (!Array.isArray(row) || row.length < 3) continue;
+          const [type, tsDelta, valDelta] = row;
+          // Keepa: 第一个 timestamp 是绝对毫秒，后续是 delta
+          const ts = i === 0 ? tsDelta : lastTimestamp + tsDelta;
+          const val = i === 0 ? valDelta : lastValue + valDelta;
+          out.push({ type, timestamp: ts, value: val });
+          lastTimestamp = ts;
+          lastValue = val;
+        }
+        return out;
+      };
+
+      // Keepa CSV type 常量
+      const TYPE = {
+        AMAZON_NEW_PRICE: 0,
+        NEW_3RD_PARTY_PRICE: 1,
+        USED_PRICE: 2,
+        NEW_SALES_RANK: 3,        // ← 这个就是类目 BSR 排名
+        USED_SALES_RANK: 4,
+        AMAZON_OFFER_COUNT: 5,
+        NEW_OFFER_COUNT: 6,
+        USED_OFFER_COUNT: 7,
+        NEW_FBM_PRICE: 10,
+        NEW_FBA_PRICE: 11,
+        NEW_FBA_SHIPPING: 12,
+      };
+
+      // 解各时间序列
+      const priceHistory = keepaDecode(product.csvPrice || []);
+      const rankHistory = keepaDecode(product.csv[TYPE.NEW_SALES_RANK] || []);
+      const offerHistory = keepaDecode(product.csv[TYPE.NEW_OFFER_COUNT] || []);
+
+      // 取当前 stats（Keepa stats 数组顺序 = CSV type 顺序）
+      const stats = product.stats || {};
+      const current = stats.current || [];  // 数组按 CSV type 顺序
+      const avg180 = stats.avg180 || [];
+      const min180 = stats.minInInterval || [];
+      const max180 = stats.maxInInterval || [];
+
+      // 把 rankHistory 转成 { date, bsr } 用于前端 sparkline
+      const rankSeries = rankHistory
+        .filter(r => r.type === TYPE.NEW_SALES_RANK && r.value > 0)
+        .map(r => ({
+          date: new Date(r.timestamp).toISOString().slice(0, 10),
+          bsr: r.value,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      // 取最新 BSR 快照
+      const latestRank = rankSeries[rankSeries.length - 1];
+
+      // 算 7 天 / 30 天排名变化
+      const rankDelta = {};
+      const daysAgo = (n) => {
+        const cutoff = Date.now() - n * 86400000;
+        for (let i = rankSeries.length - 1; i >= 0; i--) {
+          if (new Date(rankSeries[i].date).getTime() <= cutoff) return rankSeries[i];
+        }
+        return rankSeries[0];
+      };
+      const rNow = latestRank?.bsr;
+      const r7d = daysAgo(7)?.bsr;
+      const r30d = daysAgo(30)?.bsr;
+      rankDelta.now = rNow;
+      rankDelta.d7 = r7d ? { rank: r7d, delta: rNow != null ? rNow - r7d : null } : null;
+      rankDelta.d30 = r30d ? { rank: r30d, delta: rNow != null ? rNow - r30d : null } : null;
+
+      return sendJson(res, 200, {
+        ok: true,
+        asin,
+        marketplace,
+        title: product.title,
+        brand: product.brand,
+        categoryTree: product.categoryTree,  // [{ name, categoryId }]
+        mainImage: product.image,
+        current: {
+          amazonPrice: current[0] != null ? current[0] / 100 : null,   // 分→美元
+          newPrice: current[1] != null ? current[1] / 100 : null,
+          usedPrice: current[2] != null ? current[2] / 100 : null,
+          bsrNew: current[3] || null,           // 类目 BSR 排名
+          bsrUsed: current[4] || null,
+          amazonOffers: current[5] || null,
+          newOffers: current[6] || null,         // 第三方卖家数
+          usedOffers: current[7] || null,
+        },
+        avg: {
+          amazonPrice: avg180[0] != null ? avg180[0] / 100 : null,
+          newPrice: avg180[1] != null ? avg180[1] / 100 : null,
+          bsrNew: avg180[3] || null,
+          newOffers: avg180[6] || null,
+        },
+        min: {
+          amazonPrice: min180[0] != null ? min180[0] / 100 : null,
+          newPrice: min180[1] != null ? min180[1] / 100 : null,
+          bsrNew: min180[3] || null,
+        },
+        max: {
+          bsrNew: max180[3] || null,
+        },
+        rankDelta,          // { now, d7:{rank,delta}, d30:{rank,delta} }
+        rankSeries,         // [{date, bsr}] 用于 sparkline
+        priceHistory: priceHistory.slice(-30).map(p => ({   // 最近 30 天价格
+          date: new Date(p.timestamp).toISOString().slice(0, 10),
+          price: p.value / 100,
+        })),
+        offerCount: current[6] || null,
+        statsIntervalDays: days,
+      });
+    } catch (e) {
+      return sendJson(res, 500, { ok: false, error: e.message, stack: e.stack?.slice(0, 400) });
+    }
+  }
+
+  // Keepa token 状态检查
+  if (pathname === '/api/keepa/status') {
+    return sendJson(res, 200, {
+      ok: true,
+      configured: !!CFG.keepaToken,
+      tokenPrefix: CFG.keepaToken ? CFG.keepaToken.slice(0, 4) + '...' : null,
+      usageNote: 'Keepa 按 token 计费：product 端点每次 ~1 token，CSV 解码后返回 BSR + 价格历史 + 卖家数历史',
+    });
+  }
   if (pathname === '/api/alexa/insight') {
     try {
       const rawQ = query.seeds || query.q || query.prefix || '';
