@@ -1542,13 +1542,13 @@ function parseAsinProduct(html, asin, marketplace) {
   const debugPrice = {};
   const hasCorePriceFeature = /id="corePrice_feature_div"/i.test(html);
   const hasCorePriceDisplay = /id="corePriceDisplay_desktop_feature_div"/i.test(html);
-  const offscreenCount = [...html.matchAll(/a-offscreen/gi)].length;
-  const offscreenWithDollar = [...html.matchAll(/class="a-offscreen[^"]*"[^>]*>\$/gi)].length;
+  const allOffscreen = [...html.matchAll(/<span[^>]*class="a-offscreen[^"]*"[^>]*>([^<]+)<\/span>/gi)].map(m => m[1].trim()).slice(0, 20);
+  const allPrices = allOffscreen.filter(t => /^\$?[\d,]+\.?\d*$/.test(t));
   debugPrice.hasCorePriceFeature = hasCorePriceFeature;
   debugPrice.hasCorePriceDisplay = hasCorePriceDisplay;
-  debugPrice.offscreenCount = offscreenCount;
-  debugPrice.offscreenWithDollar = offscreenWithDollar;
   debugPrice.htmlLen = html.length;
+  debugPrice.allOffscreen = allOffscreen;
+  debugPrice.allPriceSpans = allPrices;
 
   // 主策略：搜 corePrice 块里的 a-offscreen（最可靠）
   const priceBlock = html.match(/id="(?:corePrice|corePriceDisplay_desktop)(?:_feature_div)?"[\s\S]{0,8000}/i);
