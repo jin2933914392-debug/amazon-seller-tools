@@ -939,6 +939,20 @@ async function handleApi(req, res, pathname, query) {
         return sendJson(res, 404, { ok: false, error: 'Keepa 查不到这个 ASIN', asin });
       }
 
+      // Keepa productType 快速检查（官方说一定要先看）
+      // 0=STANDARD ✅  1=DOWNLOADABLE  2=EBOOK  3=INACCESSIBLE  4=INVALID ❌  5=VARIATION_PARENT
+      const PTYPE_MSG = {
+        0: 'STANDARD — 所有数据可访问',
+        1: 'DOWNLOADABLE — 无可访问的价格/评分/offers',
+        2: 'EBOOK — 无可访问的价格/评分/offers',
+        3: 'INACCESSIBLE — 数据更新不频繁',
+        4: 'INVALID — ASIN 无效或已废弃',
+        5: 'VARIATION_PARENT — 这是父 ASIN，含 variations',
+      };
+      if (product.productType === 4) {
+        return sendJson(res, 404, { ok: false, error: 'Keepa 标记此 ASIN 为 INVALID（已废弃或不存在）', asin, productType: 4 });
+      }
+
       // ===== Keepa CSV 解码（差分编码） =====
       // Keepa CSV 格式是 [[type, timestamp, value], ...] 的 base64 + 自定义整数序列
       // 我们用 stats 字段（Keepa 已帮我们解好）+ 手动解 salesRank 历史
@@ -1497,9 +1511,69 @@ function parseAsinProduct(html, asin, marketplace) {
   const isFBA = /Fulfilled by Amazon/i.test(html) || /Ships from Amazon/i.test(html);
   result.isFBA = isFBA;
 
-  // 10. Sales Rank
-  const sr = html.match(/Best Sellers Rank[^>]*>([\s\S]{0,300}?)/i);
-  result.salesRank = cleanHtml(sr?.[1])?.slice(0, 200) || null;
+  // 10. Sales Rank — 结构化！拆成 bsr（数字）+ bsrCategory（类目）
+  let bsr = null;
+  let bsrCategory = null;
+  const sr = html.match(/Best Sellers Rank[^>]*>([\s\S]{0,500})/i);
+  const srText = cleanHtml(sr?.[1]) || '';
+  // 匹配 "#1,234 in Patio, Lawn & Garden" 或 "#123 in Electronics"
+  const bsrMatch = srText.match(/#([\d,]+)\s+in\s+([^\n]+?)(?:\s*\(|$)/i);
+  if (bsrMatch) {
+    bsr = parseInt(bsrMatch[1].replace(/,/g, ''), 10);
+    bsrCategory = bsrMatch[2].trim();
+  } else {
+    // fallback: 第一个 #数字 in 后面的类目
+    const bsrFallback = srText.match(/#([\d,]+)\s+in\s+([^&\n]+)/i);
+    if (bsrFallback) {
+      bsr = parseInt(bsrFallback[1].replace(/,/g, ''), 10);
+      bsrCategory = bsrFallback[2].trim();
+    }
+  }
+  result.salesRank = srText.slice(0, 200) || null;
+  result.bsr = bsr;                    // 真实类目 BSR 排名（数字，越小越好）
+  result.bsrCategory = bsrCategory;    // 所属类目名
+
+  // 10b. 价格（Amazon 自营 + 第三方）
+  let priceAmazon = null;
+  let priceThird = null;
+  // Amazon 自营价 — 最常见的 #corePrice_feature_div
+  const amzPriceBlock = html.match(/id="corePrice_feature_div"[\s\S]{0,800}/i);
+  if (amzPriceBlock) {
+    const p = amzPriceBlock[0].match(/class="a-price[^"]*"[^>]*>[\s\S]*?<span[^>]*class="a-offscreen[^"]*"[^>]*>\$?([\d,]+\.?\d*)/i);
+    if (p) priceAmazon = parseFloat(p[1].replace(/,/g, ''));
+  }
+  // fallback: #priceblock_ourprice
+  if (!priceAmazon) {
+    const pf = html.match(/id="priceblock_ourprice"[^>]*>[\s\S]*?\$?([\d,]+\.?\d*)/i);
+    if (pf) priceAmazon = parseFloat(pf[1].replace(/,/g, ''));
+  }
+  // 第三方最低价 — #priceblock_dealprice 或 #lowestPrice_feature_div
+  const thirdDeal = html.match(/id="priceblock_dealprice"[^>]*>[\s\S]*?\$?([\d,]+\.?\d*)/i);
+  if (thirdDeal) priceThird = parseFloat(thirdDeal[1].replace(/,/g, ''));
+  if (!priceThird) {
+    const lp = html.match(/id="lowestPrice_feature_div"[\s\S]*?\$?([\d,]+\.?\d*)/i);
+    if (lp) priceThird = parseFloat(lp[1].replace(/,/g, ''));
+  }
+  // 再 fallback: #priceblock_usedprice
+  if (!priceThird) {
+    const up = html.match(/id="priceblock_usedprice"[^>]*>[\s\S]*?\$?([\d,]+\.?\d*)/i);
+    if (up) priceThird = parseFloat(up[1].replace(/,/g, ''));
+  }
+  result.priceAmazon = priceAmazon;    // Amazon 自营价（美元）
+  result.priceThird = priceThird;      // 第三方最低价（美元）
+  result.priceCurrent = priceAmazon || priceThird || null;  // 当前展示价
+
+  // 10c. 卖家数（第三方 NEW offers 数量）
+  let sellerCount = null;
+  // "#N in Stock" 或 "N new" 或 "#9,999 in stock"
+  const stockm = html.match(/(\d{1,3}(?:,\d{3})*)\s+in\s+stock/i);
+  if (stockm) sellerCount = parseInt(stockm[1].replace(/,/g, ''), 10);
+  // "N more buying choices"
+  if (sellerCount == null) {
+    const more = html.match(/(\d+)\s+more\s+buying\s+choices/i);
+    if (more) sellerCount = parseInt(more[1], 10) + 1;  // +1 = 当前显示的那个
+  }
+  result.sellerCount = sellerCount;
 
   // 11. 从 title + bullets 里提取关键词种子（去噪音）
   const NOISE = /^(with|the|and|for|from|that|this|your|our|has|but|not|are|was|were|all|any|both|each|few|more|most|other|some|such|than|too|very|can|will|just|into|also|over|under|plus|minus|like|need|want|make|take|use|get|set|put|let|say|may|new|old|good|best|great|well|back|down|high|low|last|next|same|different|right|left|page|book|set|kit|pack|pair|item|product|include|includes|package|quantity|count|size|type|model|style|color|material|feature|features|without|comes|come|buy|order|free|prime|ship|shipping|seller|sold|available|limited|while|since|because|though|although|whether|however|therefore|otherwise|connect|connection|use|using|used|support|supports|compatible|includes|including|featuring|designed|designed|quality|premium|original|genuine|official|authentic)$/i;
