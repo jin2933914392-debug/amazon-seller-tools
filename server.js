@@ -1,9 +1,160 @@
 'use strict';
 
 const http = require('http');
+const https = require('https');
+const tls = require('tls');
+const net = require('net');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+
+// ===== Proxy 配置（可选）=====
+// 优先级：AMAZON_PROXY > HTTPS_PROXY > HTTP_PROXY
+// 格式：http://user:pass@host:port 或 http://host:port
+const PROXY_URL = process.env.AMAZON_PROXY || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '';
+const PROXY_ENABLED = !!PROXY_URL;
+if (PROXY_ENABLED) { console.log('[proxy] Enabled:', PROXY_URL.replace(/\/\/([^:]+):([^@]+)@/, '//$1:****@')); }
+
+/**
+ * 零依赖 HTTPS over HTTP Proxy（CONNECT tunnel）
+ * 替代 Node fetch，完整支持 status + headers + body + redirect
+ * @param {string} url - 目标 HTTPS URL
+ * @param {object} opts - { method, headers, timeout }
+ * @returns {Promise<{status, headers, body:string, finalUrl}>}
+ */
+function proxyFetch(url, opts = {}) {
+  return new Promise((resolve, reject) => {
+    try {
+      const target = new URL(url);
+      const proxy = new URL(PROXY_URL);
+      const method = (opts.method || 'GET').toUpperCase();
+      const timeout = opts.timeout || 30000;
+
+      // 第一步：连接 proxy 发送 CONNECT
+      const proxySocket = net.connect({
+        host: proxy.hostname,
+        port: parseInt(proxy.port, 10) || (proxy.protocol === 'https:' ? 443 : 80),
+      });
+
+      const timer = setTimeout(() => { proxySocket.destroy(new Error('Proxy connect timeout')); }, timeout);
+
+      proxySocket.once('error', (e) => { clearTimeout(timer); reject(e); });
+
+      proxySocket.once('connect', () => {
+        // CONNECT host:port HTTP/1.1
+        let connectReq = `CONNECT ${target.hostname}:${target.port || 443} HTTP/1.1\r\nHost: ${target.hostname}\r\n`;
+        // Proxy Basic Auth
+        if (proxy.username && proxy.password) {
+          const auth = Buffer.from(`${proxy.username}:${proxy.password}`).toString('base64');
+          connectReq += `Proxy-Authorization: Basic ${auth}\r\n`;
+        }
+        connectReq += '\r\n';
+        proxySocket.write(connectReq);
+
+        // 等待 proxy 返回 200 Connection established
+        const onData = (buf) => {
+          const data = buf.toString();
+          const firstLine = data.split('\r\n')[0];
+          if (!/HTTP\/1\.\d 200/i.test(firstLine)) {
+            clearTimeout(timer);
+            proxySocket.destroy();
+            reject(new Error('Proxy CONNECT failed: ' + firstLine));
+            return;
+          }
+          proxySocket.removeListener('data', onData);
+          clearTimeout(timer);
+
+          // 第二步：CONNECT 成功 → TLS handshake
+          const tlsSocket = tls.connect({
+            socket: proxySocket,
+            servername: target.hostname,
+            rejectUnauthorized: false,
+          });
+          tlsSocket.once('error', (e) => reject(e));
+
+          tlsSocket.once('secureConnect', () => {
+            // 第三步：发 HTTP request
+            let req = `${method} ${target.pathname + target.search} HTTP/1.1\r\n`;
+            req += `Host: ${target.hostname}\r\n`;
+            req += `Connection: close\r\n`;
+            for (const [k, v] of Object.entries(opts.headers || {})) {
+              if (k.toLowerCase() !== 'host') req += `${k}: ${v}\r\n`;
+            }
+            req += '\r\n';
+            if (opts.body) req += opts.body;
+            tlsSocket.write(req);
+
+            // 读 response
+            let buffer = Buffer.alloc(0);
+            let headerEnd = -1;
+            let statusCode = 0;
+            let headers = {};
+            let redirectedFrom = null;
+
+            const recv = (chunk) => {
+              buffer = Buffer.concat([buffer, chunk]);
+              if (headerEnd === -1) {
+                headerEnd = buffer.indexOf('\r\n\r\n');
+                if (headerEnd !== -1) {
+                  const headerPart = buffer.slice(0, headerEnd).toString();
+                  const lines = headerPart.split('\r\n');
+                  const statusLine = lines[0] || '';
+                  statusCode = parseInt(statusLine.match(/HTTP\/1\.\d\s+(\d+)/)?.[1] || '0', 10);
+                  for (const line of lines.slice(1)) {
+                    const idx = line.indexOf(':');
+                    if (idx > 0) {
+                      const k = line.slice(0, idx).trim().toLowerCase();
+                      const v = line.slice(idx + 1).trim();
+                      if (headers[k]) headers[k] += ', ' + v; else headers[k] = v;
+                    }
+                  }
+                  // 自动跟随 redirect（只支持一次，避免循环）
+                  const loc = headers['location'];
+                  if (loc && statusCode >= 300 && statusCode < 400 && !redirectedFrom) {
+                    tlsSocket.removeListener('data', recv);
+                    tlsSocket.end();
+                    const newUrl = loc.startsWith('/') ? `${target.protocol}//${target.host}${loc}` : loc;
+                    proxyFetch(newUrl, opts).then(resolve).catch(reject);
+                    return;
+                  }
+                }
+              }
+            };
+
+            tlsSocket.on('data', recv);
+            tlsSocket.on('end', () => {
+              const bodyStart = headerEnd === -1 ? 0 : headerEnd + 4;
+              const body = buffer.slice(bodyStart).toString('utf8');
+              resolve({ status: statusCode, headers, body, finalUrl: url });
+            });
+          });
+        };
+
+        proxySocket.on('data', onData);
+      });
+    } catch (e) { reject(e); }
+  });
+}
+
+/**
+ * fetch 兼容封装：有 proxy 走 proxyFetch，没 proxy 走原生 fetch
+ */
+async function smartFetch(url, opts = {}) {
+  if (PROXY_ENABLED) {
+    return proxyFetch(url, opts);
+  }
+  // 原生 fetch → 统一成 { status, headers, body } 格式
+  const r = await fetch(url, {
+    method: opts.method || 'GET',
+    headers: opts.headers,
+    body: opts.body,
+    signal: opts.timeout ? AbortSignal.timeout(opts.timeout) : undefined,
+    redirect: opts.redirect || 'follow',
+  });
+  const headers = {};
+  for (const [k, v] of r.headers.entries()) { headers[k.toLowerCase()] = v; }
+  return { status: r.status, headers, body: await r.text(), finalUrl: r.url };
+}
 
 const PORT = process.env.PORT || 8000;
 // ===== 定时抓取 & 内存缓存（每 3 小时自动刷新 Alexa 导购洞察） =====
@@ -1391,7 +1542,8 @@ async function fetchAsinPage(asin, marketplace) {
     // Step 1: 访问首页拿 Cookie
     const cookieJar = new Map();
     try {
-      const homeRes = await fetch('https://www.' + host + '/', {
+      const homeRes = await smartFetch('https://www.' + host + '/', {
+        method: 'GET', timeout: 15000,
         headers: {
           'User-Agent': ua,
           'Accept-Language': 'en-US,en;q=0.9',
@@ -1399,10 +1551,9 @@ async function fetchAsinPage(asin, marketplace) {
           'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none',
           'Sec-Fetch-User': '?1', 'Upgrade-Insecure-Requests': '1',
         },
-        redirect: 'follow', signal: AbortSignal.timeout(15000),
       });
-      const setCookies = homeRes.headers.getSetCookie ? homeRes.headers.getSetCookie() : (homeRes.headers.get('set-cookie') || '').split(/,(?=\s*[A-Za-z])/);
-      setCookies.forEach(c => {
+      const setCookie = homeRes.headers['set-cookie'] || '';
+      setCookie.split(/,(?=\s*[A-Za-z])/).forEach(c => {
         const m = (c || '').trim().match(/^([^=]+)=([^;]+)/);
         if (m) cookieJar.set(m[1], m[2]);
       });
@@ -1411,7 +1562,8 @@ async function fetchAsinPage(asin, marketplace) {
     // Step 2: 带 Cookie 访问产品页
     const cookieStr = [...cookieJar.entries()].map(([k, v]) => k + '=' + v).join('; ') || 'i18n-prefs=USD; lc-main=en_US';
     try {
-      const r = await fetch(url, {
+      const r = await smartFetch(url, {
+        method: 'GET', timeout: 30000,
         headers: {
           'User-Agent': ua,
           'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8',
@@ -1422,9 +1574,8 @@ async function fetchAsinPage(asin, marketplace) {
           'Sec-Fetch-User': '?1', 'Upgrade-Insecure-Requests': '1', 'DNT': '1',
           'Cookie': cookieStr, 'Referer': 'https://www.' + host + '/',
         },
-        redirect: 'follow', signal: AbortSignal.timeout(30000),
       });
-      const html = await r.text();
+      const html = r.body;
       lastResult = { url, host, status: r.status, html };
 
       // 如果不是验证码，直接返回
