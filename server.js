@@ -1533,39 +1533,64 @@ function parseAsinProduct(html, asin, marketplace) {
   result.bsr = bsr;                    // 真实类目 BSR 排名（数字，越小越好）
   result.bsrCategory = bsrCategory;    // 所属类目名
 
-  // 10b. 价格（Amazon 自营 + 第三方）— 全 HTML 扫 a-offscreen，过滤异常取合理值
+  // ===== 价格策略：多路径抓取 =====
   let priceAmazon = null;
   let priceThird = null;
   let priceCurrent = null;
 
-  // 主策略：抓所有 a-offscreen 里的价格，过滤异常，取最合理的
-  const allPriceSpans = [...html.matchAll(/<span[^>]*class="a-offscreen[^"]*"[^>]*>\$?([\d,]+\.?\d*)<\/span>/gi)]
+  // 路径 1：a-offscreen span（常见，可能被 bot 过滤）
+  const offscreenPrices = [...html.matchAll(/<span[^>]*class="a-offscreen[^"]*"[^>]*>\$?([\d,]+\.?\d*)<\/span>/gi)]
     .map(m => parseFloat(m[1].replace(/,/g, '')))
-    .filter(n => !isNaN(n) && n > 0 && n < 20000);  // 过滤 0 和 >$20k 的荒谬值
+    .filter(n => !isNaN(n) && n > 0);
 
-  // 找一个"合理"的价格：
-  // 1. 优先取在 "Price" / "See All Buying Options" / "Buy Now" 按钮附近出现的
-  // 2. 如果没有，取出现次数最多的（mode）
-  // 3. 如果还不行，取**最小的合理值**（因为原价通常更高，实际售价更低）
-  if (allPriceSpans.length >= 2) {
-    // 先尝试取出现次数最多的那个
-    const freq = {};
-    let bestPrice = null, bestCount = 0;
-    for (const p of allPriceSpans) {
-      freq[p] = (freq[p] || 0) + 1;
-      if (freq[p] > bestCount) { bestCount = freq[p]; bestPrice = p; }
+  // 路径 2：corePrice_feature_div 附近的价格（如果没被 bot strip）
+  if (!priceAmazon) {
+    const coreBlock = html.match(/id="corePrice(?:_feature_div|Display_desktop_feature_div)?"[\s\S]{0,5000}/i);
+    if (coreBlock) {
+      const inCore = [...coreBlock[0].matchAll(/\$([\d,]+\.?\d*)/gi)]
+        .map(m => parseFloat(m[1].replace(/,/g, '')))
+        .filter(n => !isNaN(n) && n > 0);
+      if (inCore.length) priceAmazon = Math.min(...inCore);
     }
-    // 如果出现次数 >= 2，信任它；否则取最小的（实际售价通常比原价/比较价低）
-    if (bestCount >= 2) {
-      priceAmazon = bestPrice;
-    } else {
-      const sorted = [...new Set(allPriceSpans)].sort((a,b) => a - b);
-      // 排除那个最大的异常值（通常是原价/MSRP），然后取最小的
-      const reasonable = sorted.filter(p => p < sorted[sorted.length - 1] * 0.7);
-      priceAmazon = reasonable.length ? reasonable[0] : sorted[0];
+  }
+
+  // 路径 3：a-price-whole + a-price-fraction 组合（新 Amazon DOM）
+  if (!priceAmazon) {
+    // 找所有 a-price 容器，组合 whole + fraction
+    const priceContainers = [...html.matchAll(/<span[^>]*class="a-price[^"]*"[^>]*>([\s\S]{0,300}?)<\/span>/gi)];
+    const containerPrices = [];
+    for (const c of priceContainers) {
+      const wholeM = c[1].match(/class="a-price-whole[^"]*"[^>]*>([\d,]+)/i);
+      const fracM = c[1].match(/class="a-price-fraction[^"]*"[^>]*>(\d+)/i);
+      if (wholeM) {
+        const whole = parseFloat(wholeM[1].replace(/,/g, ''));
+        const frac = fracM ? parseFloat('.' + fracM[1]) : 0;
+        const v = whole + frac;
+        if (v > 0 && v < 50000) containerPrices.push(v);
+      }
     }
-  } else if (allPriceSpans.length === 1) {
-    priceAmazon = allPriceSpans[0];
+    if (containerPrices.length) priceAmazon = Math.min(...containerPrices);
+  }
+
+  // 路径 4：全局直接搜 $XX.XX 模式（兜底）
+  if (!priceAmazon) {
+    const allDollarMatches = [...html.matchAll(/\$([\d,]+\.\d{2})/gi)]
+      .map(m => parseFloat(m[1].replace(/,/g, '')))
+      .filter(n => !isNaN(n) && n > 0 && n < 20000);
+    if (allDollarMatches.length) {
+      // 过滤掉 bundle/MSRP：取最小的
+      priceAmazon = Math.min(...allDollarMatches);
+    }
+  }
+
+  // 路径 5：offscreen prices 兜底（如果上面都没命中）
+  if (!priceAmazon && offscreenPrices.length) {
+    priceAmazon = Math.min(...offscreenPrices);
+    // 如果还是 bundle 价（>=1000），排除最大 2 个再取 min
+    if (priceAmazon >= 1000 && offscreenPrices.length >= 3) {
+      const sorted = [...new Set(offscreenPrices)].sort((a,b) => a - b);
+      priceAmazon = Math.min(...sorted.slice(0, Math.max(1, sorted.length - 2)));
+    }
   }
 
   // 第三方最低价

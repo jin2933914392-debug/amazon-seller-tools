@@ -1240,6 +1240,9 @@ parts</textarea>
                     <span style="font-size:10px;background:#fff3e0;color:#E47911;padding:1px 6px;border-radius:3px;font-weight:700" id="asin-stars-tag">—</span>
                     <span style="font-size:10px;background:#f3e5f5;color:#7D4BD0;padding:1px 6px;border-radius:3px;font-weight:700" id="asin-reviews-tag">—</span>
                     <span id="asin-fba-badge" style="display:none;font-size:10px;background:#e8f5e9;color:#007E2F;padding:1px 6px;border-radius:3px;font-weight:700">FBA</span>
+                    <span id="asin-bsr-badge" style="display:none;font-size:10px;background:#ffebee;color:#C40000;padding:1px 6px;border-radius:3px;font-weight:700" title="真实 BSR 从 Amazon 产品页直接抓取">🏆 BSR —</span>
+                    <span id="asin-price-badge" style="display:none;font-size:10px;background:#fff8e1;color:#F57F17;padding:1px 6px;border-radius:3px;font-weight:700" title="真实价格从 Amazon 产品页直接抓取">💰 $—</span>
+                    <span id="asin-sellers-badge" style="display:none;font-size:10px;background:#e0f7fa;color:#006064;padding:1px 6px;border-radius:3px;font-weight:700" title="真实卖家数从 Amazon 产品页直接抓取">🏷️ — sellers</span>
                   </div>
                 </div>
               </div>
@@ -1374,7 +1377,7 @@ parts</textarea>
                         消失词: <span id="kwcat-gone" style="color:#888;font-weight:700">—</span>
                       </div>
                       <div style="margin-left:auto;color:var(--muted);font-size:10.5px;font-style:italic">
-                        💡 注: 流量/ABA/搜索量为 autocomplete 排名 proxy，非真实 ABA 数据
+                        💡 BSR · 价格 · 卖家数为<strong>真实</strong>（从 Amazon 产品页抓取），ABA/流量排名为 autocomplete proxy
                       </div>
                     </div>
                   </div>
@@ -3549,6 +3552,28 @@ parts</textarea>
       if (reviewsTag) reviewsTag.textContent = p.reviews != null ? (p.reviews.toLocaleString() + ' 评价') : '';
       document.getElementById('asin-fba-badge').style.display = p.isFBA ? 'inline-block' : 'none';
       document.getElementById('asin-cats').textContent = (p.categories?.join(' › ') || '类目: —');
+
+      // ===== 新增：真实数据 badge（BSR / 价格 / 卖家数，直接从 Amazon 产品页抓取）=====
+      const bsrBadge = document.getElementById('asin-bsr-badge');
+      if (bsrBadge && p.bsr != null) {
+        bsrBadge.style.display = 'inline-block';
+        bsrBadge.textContent = '🏆 BSR #' + p.bsr.toLocaleString() + (p.bsrCategory ? ' · ' + p.bsrCategory.split(',')[0] : '');
+        bsrBadge.title = '真实 BSR：#' + p.bsr + ' in ' + (p.bsrCategory || '—') + '（直接从 Amazon 产品页抓取）';
+      } else if (bsrBadge) { bsrBadge.style.display = 'none'; }
+
+      const priceBadge = document.getElementById('asin-price-badge');
+      if (priceBadge && p.priceCurrent != null && p.priceCurrent > 0) {
+        priceBadge.style.display = 'inline-block';
+        priceBadge.textContent = '💰 $' + p.priceCurrent.toFixed(2);
+        priceBadge.title = '真实价格 $' + p.priceCurrent.toFixed(2) + (p.priceThird ? '（第三方最低价 $' + p.priceThird.toFixed(2) + '）' : '') + '（直接从 Amazon 产品页抓取）';
+      } else if (priceBadge) { priceBadge.style.display = 'none'; }
+
+      const sellersBadge = document.getElementById('asin-sellers-badge');
+      if (sellersBadge && p.sellerCount != null && p.sellerCount > 0) {
+        sellersBadge.style.display = 'inline-block';
+        sellersBadge.textContent = '🏷️ ' + p.sellerCount + ' sellers';
+        sellersBadge.title = '真实卖家数（直接从 Amazon 产品页抓取）';
+      } else if (sellersBadge) { sellersBadge.style.display = 'none'; }
 
       // ===== 快速洞察 stat 行 =====
       const t = j.trend;
