@@ -1338,6 +1338,16 @@ async function handleApi(req, res, pathname, query) {
 
 // ===== ASIN 产品分析 =====
 const ASIN_HOSTS = { US: 'amazon.com', UK: 'amazon.co.uk', DE: 'amazon.de', FR: 'amazon.fr', IT: 'amazon.it', ES: 'amazon.es', JP: 'amazon.co.jp', CA: 'amazon.ca' };
+
+// 全局节流：每个 marketplace 至少间隔 3 秒，防止触发 Amazon 反爬
+const _asinLastCall = {};
+async function throttleAsin(marketplace) {
+  const now = Date.now();
+  const last = _asinLastCall[marketplace] || 0;
+  const wait = Math.max(0, 3000 - (now - last));
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  _asinLastCall[marketplace] = Date.now();
+}
 const ASIN_UAS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
@@ -1347,57 +1357,87 @@ const ASIN_UAS = [
 function cleanHtml(s) { return (s || '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&[a-z]+;/g, ' ').replace(/\s+/g, ' ').trim(); }
 
 async function fetchAsinPage(asin, marketplace) {
+  // 先节流，防止 IP 被 block
+  await throttleAsin(marketplace);
+
   const host = ASIN_HOSTS[marketplace] || ASIN_HOSTS.US;
   const url = 'https://www.' + host + '/dp/' + asin;
-  const ua = ASIN_UAS[Math.floor(Math.random() * ASIN_UAS.length)];
 
-  // Step 1: 访问首页拿 Cookie（反 CAPTCHA 关键一步）
-  const cookieJar = new Map();
-  try {
-    const homeRes = await fetch('https://www.' + host + '/', {
-      headers: {
-        'User-Agent': ua,
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-      },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(15000),
-    });
-    const setCookies = homeRes.headers.getSetCookie ? homeRes.headers.getSetCookie() : (homeRes.headers.get('set-cookie') || '').split(/,(?=\s*[A-Za-z])/);
-    setCookies.forEach(c => {
-      const m = (c || '').trim().match(/^([^=]+)=([^;]+)/);
-      if (m) cookieJar.set(m[1], m[2]);
-    });
-  } catch (e) { /* 首页失败不致命 */ }
+  // 验证码检测关键词
+  const CAPTCHA_SIGNS = [
+    /robot check/i, /captcha/i, /enter the characters/i,
+    /sorry..we just need to make sure/i, /Enter the characters below/i,
+    /type the characters you see in this image/i,
+  ];
+  const isCaptcha = (html) => {
+    if (!html || html.length < 50000) return true;
+    return CAPTCHA_SIGNS.some(re => re.test(html));
+  };
 
-  // Step 2: 带 Cookie + 完整浏览器头访问产品页
-  const cookieStr = [...cookieJar.entries()].map(([k, v]) => k + '=' + v).join('; ') || 'i18n-prefs=USD; lc-main=en_US';
-  const r = await fetch(url, {
-    headers: {
-      'User-Agent': ua,
-      'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-      'Accept-Encoding': 'identity',
-      'Cache-Control': 'no-cache',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'same-origin',
-      'Sec-Fetch-User': '?1',
-      'Upgrade-Insecure-Requests': '1',
-      'DNT': '1',
-      'Cookie': cookieStr,
-      'Referer': 'https://www.' + host + '/',
-    },
-    redirect: 'follow',
-    signal: AbortSignal.timeout(30000),
-  });
-  const html = await r.text();
-  return { url, host, status: r.status, html };
+  // 最多尝试 3 次，每次换 UA + 随机延迟
+  const MAX_TRIES = 3;
+  let lastResult = { url, host, status: 0, html: '' };
+
+  for (let tryIdx = 0; tryIdx < MAX_TRIES; tryIdx++) {
+    // 每次换一个新 UA
+    const ua = ASIN_UAS[(Math.floor(Math.random() * ASIN_UAS.length) + tryIdx) % ASIN_UAS.length];
+
+    // 尝试间随机延迟（第 1 次不延迟，后续 1.5-3.5s）
+    if (tryIdx > 0) {
+      const delay = 1500 + Math.floor(Math.random() * 2000);
+      await new Promise(r => setTimeout(r, delay));
+    }
+
+    // Step 1: 访问首页拿 Cookie
+    const cookieJar = new Map();
+    try {
+      const homeRes = await fetch('https://www.' + host + '/', {
+        headers: {
+          'User-Agent': ua,
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none',
+          'Sec-Fetch-User': '?1', 'Upgrade-Insecure-Requests': '1',
+        },
+        redirect: 'follow', signal: AbortSignal.timeout(15000),
+      });
+      const setCookies = homeRes.headers.getSetCookie ? homeRes.headers.getSetCookie() : (homeRes.headers.get('set-cookie') || '').split(/,(?=\s*[A-Za-z])/);
+      setCookies.forEach(c => {
+        const m = (c || '').trim().match(/^([^=]+)=([^;]+)/);
+        if (m) cookieJar.set(m[1], m[2]);
+      });
+    } catch (e) { /* 首页失败不致命 */ }
+
+    // Step 2: 带 Cookie 访问产品页
+    const cookieStr = [...cookieJar.entries()].map(([k, v]) => k + '=' + v).join('; ') || 'i18n-prefs=USD; lc-main=en_US';
+    try {
+      const r = await fetch(url, {
+        headers: {
+          'User-Agent': ua,
+          'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Encoding': 'identity',
+          'Cache-Control': 'no-cache', 'Pragma': 'no-cache',
+          'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'same-origin',
+          'Sec-Fetch-User': '?1', 'Upgrade-Insecure-Requests': '1', 'DNT': '1',
+          'Cookie': cookieStr, 'Referer': 'https://www.' + host + '/',
+        },
+        redirect: 'follow', signal: AbortSignal.timeout(30000),
+      });
+      const html = await r.text();
+      lastResult = { url, host, status: r.status, html };
+
+      // 如果不是验证码，直接返回
+      if (!isCaptcha(html)) return lastResult;
+      // 是验证码 -> 继续重试
+      lastResult.error = 'captcha';
+    } catch (e) {
+      lastResult = { url, host, status: 0, html: '', error: e.message };
+    }
+  }
+
+  // 3 次都挂了，返回最后一次结果
+  return lastResult;
 }
 
 function parseAsinProduct(html, asin, marketplace) {

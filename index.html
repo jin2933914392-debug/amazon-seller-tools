@@ -3690,7 +3690,11 @@ parts</textarea>
       setTimeout(() => { btn.disabled = false; btn.textContent = '抓取分析 + 快照'; }, 1500);
     } catch (e) {
       if (loading) loading.style.display = 'none';
-      alert('抓取失败：' + e.message);
+      // 友好的错误提示：区分网络/后端 error
+      let msg = e.message || '';
+      if (msg.includes('fetch')) msg = '网络连接失败（fetch failed）';
+      else if (msg.includes('timeout') || msg.includes('aborted')) msg = '请求超时，请稍后重试';
+      alert('抓取失败：' + msg + '\n\n如果持续出现，可能是 Amazon 触发了验证码，等几分钟再试。');
       btn.disabled = false; btn.textContent = '抓取分析 + 快照';
     }
   }
