@@ -1533,46 +1533,51 @@ function parseAsinProduct(html, asin, marketplace) {
   result.bsr = bsr;                    // 真实类目 BSR 排名（数字，越小越好）
   result.bsrCategory = bsrCategory;    // 所属类目名
 
-  // 10b. 价格（Amazon 自营 + 第三方）
+  // 10b. 价格（Amazon 自营 + 第三方）— 统一用 a-offscreen span
   let priceAmazon = null;
   let priceThird = null;
-  // Amazon 自营价 — 最常见的 #corePrice_feature_div
-  const amzPriceBlock = html.match(/id="corePrice_feature_div"[\s\S]{0,800}/i);
-  if (amzPriceBlock) {
-    const p = amzPriceBlock[0].match(/class="a-price[^"]*"[^>]*>[\s\S]*?<span[^>]*class="a-offscreen[^"]*"[^>]*>\$?([\d,]+\.?\d*)/i);
-    if (p) priceAmazon = parseFloat(p[1].replace(/,/g, ''));
+  // 策略：搜 corePrice_feature_div 或 corePriceDisplay_desktop_feature_div 里的 a-offscreen
+  // 这些块里的第一个 $XX.XX 就是当前展示价
+  const priceBlock = html.match(/id="(?:corePrice|corePriceDisplay_desktop)(?:_feature_div)?"[\s\S]{0,5000}/i);
+  if (priceBlock) {
+    const allPrices = [...priceBlock[0].matchAll(/<span[^>]*class="a-offscreen[^"]*"[^>]*>\$?([\d,]+\.?\d*)<\/span>/gi)].map(m => parseFloat(m[1].replace(/,/g, '')));
+    if (allPrices.length) priceAmazon = allPrices[0];  // 第一个就是当前展示价
   }
-  // fallback: #priceblock_ourprice
+  // fallback: #priceblock_ourprice 老结构
   if (!priceAmazon) {
     const pf = html.match(/id="priceblock_ourprice"[^>]*>[\s\S]*?\$?([\d,]+\.?\d*)/i);
     if (pf) priceAmazon = parseFloat(pf[1].replace(/,/g, ''));
   }
-  // 第三方最低价 — #priceblock_dealprice 或 #lowestPrice_feature_div
-  const thirdDeal = html.match(/id="priceblock_dealprice"[^>]*>[\s\S]*?\$?([\d,]+\.?\d*)/i);
-  if (thirdDeal) priceThird = parseFloat(thirdDeal[1].replace(/,/g, ''));
-  if (!priceThird) {
-    const lp = html.match(/id="lowestPrice_feature_div"[\s\S]*?\$?([\d,]+\.?\d*)/i);
+  // 第三方最低价 — 在整个页面里找 #lowestPrice 或 dealprice 区域
+  const lpBlock = html.match(/id="lowestPrice[^"]*"[\s\S]{0,1500}/i);
+  if (lpBlock) {
+    const lp = lpBlock[0].match(/\$?([\d,]+\.?\d*)/i);
     if (lp) priceThird = parseFloat(lp[1].replace(/,/g, ''));
   }
-  // 再 fallback: #priceblock_usedprice
   if (!priceThird) {
-    const up = html.match(/id="priceblock_usedprice"[^>]*>[\s\S]*?\$?([\d,]+\.?\d*)/i);
-    if (up) priceThird = parseFloat(up[1].replace(/,/g, ''));
+    const thirdDeal = html.match(/id="priceblock_dealprice"[^>]*>[\s\S]*?\$?([\d,]+\.?\d*)/i);
+    if (thirdDeal) priceThird = parseFloat(thirdDeal[1].replace(/,/g, ''));
   }
-  result.priceAmazon = priceAmazon;    // Amazon 自营价（美元）
-  result.priceThird = priceThird;      // 第三方最低价（美元）
-  result.priceCurrent = priceAmazon || priceThird || null;  // 当前展示价
+  result.priceAmazon = priceAmazon;
+  result.priceThird = priceThird;
+  result.priceCurrent = priceAmazon || priceThird || null;
 
   // 10c. 卖家数（第三方 NEW offers 数量）
   let sellerCount = null;
-  // "#N in Stock" 或 "N new" 或 "#9,999 in stock"
-  const stockm = html.match(/(\d{1,3}(?:,\d{3})*)\s+in\s+stock/i);
-  if (stockm) sellerCount = parseInt(stockm[1].replace(/,/g, ''), 10);
-  // "N more buying choices"
-  if (sellerCount == null) {
-    const more = html.match(/(\d+)\s+more\s+buying\s+choices/i);
-    if (more) sellerCount = parseInt(more[1], 10) + 1;  // +1 = 当前显示的那个
+  // "N more buying choices" / "N&hellip; other sellers" / "N sellers"
+  const sellerPatterns = [
+    /(\d+)\s+more\s+buying\s+choices/i,
+    /(\d+)(?:,[\d]{3})*\s+other\s+sellers/i,
+    /from\s+(\d+)\s+sellers/i,
+    /(\d+)\s+sellers?\s+available/i,
+    /(\d+)(?:,[\d]{3})*\s+offers?\s+from/i,
+    /(\d{1,3}(?:,\d{3})*)\s+in\s+stock/i,
+  ];
+  for (const pat of sellerPatterns) {
+    const m = html.match(pat);
+    if (m) { sellerCount = parseInt(m[1].replace(/,/g, ''), 10); break; }
   }
+  if (sellerCount != null && /more buying/i.test(html)) sellerCount += 1;
   result.sellerCount = sellerCount;
 
   // 11. 从 title + bullets 里提取关键词种子（去噪音）
