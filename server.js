@@ -1533,34 +1533,50 @@ function parseAsinProduct(html, asin, marketplace) {
   result.bsr = bsr;                    // 真实类目 BSR 排名（数字，越小越好）
   result.bsrCategory = bsrCategory;    // 所属类目名
 
-  // 10b. 价格（Amazon 自营 + 第三方）— 统一用 a-offscreen span
+  // 10b. 价格（Amazon 自营 + 第三方）— 直接搜 a-offscreen span
   let priceAmazon = null;
   let priceThird = null;
-  // 策略：搜 corePrice_feature_div 或 corePriceDisplay_desktop_feature_div 里的 a-offscreen
-  // 这些块里的第一个 $XX.XX 就是当前展示价
-  const priceBlock = html.match(/id="(?:corePrice|corePriceDisplay_desktop)(?:_feature_div)?"[\s\S]{0,5000}/i);
+  let priceCurrent = null;
+
+  // 主策略：搜 corePrice 块里的 a-offscreen（最可靠）
+  const priceBlock = html.match(/id="(?:corePrice|corePriceDisplay_desktop)(?:_feature_div)?"[\s\S]{0,8000}/i);
   if (priceBlock) {
-    const allPrices = [...priceBlock[0].matchAll(/<span[^>]*class="a-offscreen[^"]*"[^>]*>\$?([\d,]+\.?\d*)<\/span>/gi)].map(m => parseFloat(m[1].replace(/,/g, '')));
-    if (allPrices.length) priceAmazon = allPrices[0];  // 第一个就是当前展示价
+    // 先找所有 a-offscreen span
+    const spans = [...priceBlock[0].matchAll(/<span[^>]*class="a-offscreen[^"]*"[^>]*>([^<]+)<\/span>/gi)];
+    // 价格模式：以 $ 开头 + 数字
+    const prices = spans.map(m => m[1].trim()).filter(t => /^\$?[\d,]+\.?\d*$/.test(t)).map(t => parseFloat(t.replace(/[$,]/g, ''))).filter(n => !isNaN(n) && n > 0);
+    if (prices.length) priceAmazon = prices[0];  // 第一个就是当前展示价
+  }
+  // fallback: 全局搜 a-offscreen 里第一个 $XX.XX
+  if (!priceAmazon) {
+    const globalPrice = html.match(/<span[^>]*class="a-offscreen[^"]*"[^>]*>\$([\d,]+\.?\d*)<\/span>/i);
+    if (globalPrice) priceAmazon = parseFloat(globalPrice[1].replace(/,/g, ''));
   }
   // fallback: #priceblock_ourprice 老结构
   if (!priceAmazon) {
     const pf = html.match(/id="priceblock_ourprice"[^>]*>[\s\S]*?\$?([\d,]+\.?\d*)/i);
     if (pf) priceAmazon = parseFloat(pf[1].replace(/,/g, ''));
   }
-  // 第三方最低价 — 在整个页面里找 #lowestPrice 或 dealprice 区域
-  const lpBlock = html.match(/id="lowestPrice[^"]*"[\s\S]{0,1500}/i);
+
+  // 第三方最低价
+  const lpBlock = html.match(/id="lowestPrice[^"]*"[\s\S]{0,2000}/i);
   if (lpBlock) {
-    const lp = lpBlock[0].match(/\$?([\d,]+\.?\d*)/i);
-    if (lp) priceThird = parseFloat(lp[1].replace(/,/g, ''));
+    const lpSpans = [...lpBlock[0].matchAll(/<span[^>]*class="a-offscreen[^"]*"[^>]*>[$]?([\d,]+\.?\d*)<\/span>/gi)];
+    const lpPrices = lpSpans.map(m => parseFloat(m[1].replace(/,/g, ''))).filter(n => !isNaN(n) && n > 0);
+    if (lpPrices.length) priceThird = Math.min(...lpPrices);  // 取最低价
   }
   if (!priceThird) {
     const thirdDeal = html.match(/id="priceblock_dealprice"[^>]*>[\s\S]*?\$?([\d,]+\.?\d*)/i);
-    if (thirdDeal) priceThird = parseFloat(thirdDeal[1].replace(/,/g, ''));
+    if (thirdDeal) priceThird = parseFloat(thirdDeal[1].replace(/,/g, '')) || null;
   }
+
+  // 0 值保护
+  if (priceAmazon === 0) priceAmazon = null;
+  if (priceThird === 0) priceThird = null;
+  priceCurrent = priceAmazon || priceThird || null;
   result.priceAmazon = priceAmazon;
   result.priceThird = priceThird;
-  result.priceCurrent = priceAmazon || priceThird || null;
+  result.priceCurrent = priceCurrent;
 
   // 10c. 卖家数（第三方 NEW offers 数量）
   let sellerCount = null;
