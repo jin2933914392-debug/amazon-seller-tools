@@ -1538,18 +1538,33 @@ function parseAsinProduct(html, asin, marketplace) {
   let priceThird = null;
   let priceCurrent = null;
 
+  // DEBUG: 临时输出到 result
+  const debugPrice = {};
+  const hasCorePriceFeature = /id="corePrice_feature_div"/i.test(html);
+  const hasCorePriceDisplay = /id="corePriceDisplay_desktop_feature_div"/i.test(html);
+  const offscreenCount = [...html.matchAll(/a-offscreen/gi)].length;
+  const offscreenWithDollar = [...html.matchAll(/class="a-offscreen[^"]*"[^>]*>\$/gi)].length;
+  debugPrice.hasCorePriceFeature = hasCorePriceFeature;
+  debugPrice.hasCorePriceDisplay = hasCorePriceDisplay;
+  debugPrice.offscreenCount = offscreenCount;
+  debugPrice.offscreenWithDollar = offscreenWithDollar;
+  debugPrice.htmlLen = html.length;
+
   // 主策略：搜 corePrice 块里的 a-offscreen（最可靠）
   const priceBlock = html.match(/id="(?:corePrice|corePriceDisplay_desktop)(?:_feature_div)?"[\s\S]{0,8000}/i);
+  debugPrice.priceBlockFound = !!priceBlock;
   if (priceBlock) {
-    // 先找所有 a-offscreen span
     const spans = [...priceBlock[0].matchAll(/<span[^>]*class="a-offscreen[^"]*"[^>]*>([^<]+)<\/span>/gi)];
-    // 价格模式：以 $ 开头 + 数字
+    const rawTexts = spans.map(m => m[1].trim()).slice(0, 5);
+    debugPrice.priceBlockSpans = rawTexts;
     const prices = spans.map(m => m[1].trim()).filter(t => /^\$?[\d,]+\.?\d*$/.test(t)).map(t => parseFloat(t.replace(/[$,]/g, ''))).filter(n => !isNaN(n) && n > 0);
-    if (prices.length) priceAmazon = prices[0];  // 第一个就是当前展示价
+    debugPrice.priceBlockParsedPrices = prices;
+    if (prices.length) priceAmazon = prices[0];
   }
-  // fallback: 全局搜 a-offscreen 里第一个 $XX.XX
+  // fallback: 全局搜
   if (!priceAmazon) {
     const globalPrice = html.match(/<span[^>]*class="a-offscreen[^"]*"[^>]*>\$([\d,]+\.?\d*)<\/span>/i);
+    debugPrice.globalPriceMatch = globalPrice ? globalPrice[1] : null;
     if (globalPrice) priceAmazon = parseFloat(globalPrice[1].replace(/,/g, ''));
   }
   // fallback: #priceblock_ourprice 老结构
@@ -1577,6 +1592,7 @@ function parseAsinProduct(html, asin, marketplace) {
   result.priceAmazon = priceAmazon;
   result.priceThird = priceThird;
   result.priceCurrent = priceCurrent;
+  result.debugPrice = debugPrice;   // 临时 debug，之后删
 
   // 10c. 卖家数（第三方 NEW offers 数量）
   let sellerCount = null;
